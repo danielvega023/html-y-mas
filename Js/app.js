@@ -1,611 +1,1228 @@
-// ==================== CONFIGURACIÓN GLOBAL ====================
+/* ═══════════════════════════════════════════════════════
+   HALCONES — app.js v2
+   Backend: Node.js/Express · MySQL
+   Endpoints base: http://localhost:3000
+═══════════════════════════════════════════════════════ */
+
 const API_BASE = 'http://localhost:3000';
+
 let currentUser = null;       // { id, nombre, rol }
-let charts = {};
+let charts = {};              // instancias Chart.js
 let disciplinasList = [];
 let gruposList = [];
+let atletasList = [];         // cache para filtros
+let attEstados = {};          // { id_atleta: 'presente'|'ausente'|'tarde' }
 
-// ==================== FUNCIONES AUXILIARES ====================
-function showToast(msg, isError = false) {
-  const toast = document.getElementById('toast');
-  toast.textContent = msg;
-  toast.style.backgroundColor = isError ? '#e74c3c' : '#14181f';
-  toast.style.borderColor = isError ? '#e74c3c' : '#2299e2';
-  toast.style.color = isError ? '#fff' : '#2299e2';
-  toast.classList.remove('hidden');
-  setTimeout(() => toast.classList.add('hidden'), 3000);
+/* ─── TOAST ─────────────────────────────────────────── */
+function showToast(msg, type = 'info') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast visible ${type}`;
+  clearTimeout(t._to);
+  t._to = setTimeout(() => t.classList.remove('visible'), 3200);
 }
 
-async function fetchAPI(endpoint, options = {}) {
+/* ─── API HELPER ─────────────────────────────────────── */
+async function api(endpoint, options = {}) {
   const res = await fetch(`${API_BASE}${endpoint}`, {
     headers: { 'Content-Type': 'application/json' },
     ...options
   });
   if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(errorText || res.statusText);
+    let msg = res.statusText;
+    try { const j = await res.json(); msg = j.mensaje || j.error || msg; } catch {}
+    throw new Error(msg);
   }
   return res.json();
 }
 
+/* ─── MODALES ────────────────────────────────────────── */
 function abrirModal(id) {
-  document.getElementById(id).classList.add('open');
+  const m = document.getElementById(id);
+  if (m) m.classList.add('open');
 }
 function cerrarModales() {
-  document.querySelectorAll('.modal').forEach(m => m.classList.remove('open'));
+  document.querySelectorAll('.modal').forEach(m => {
+    if (m.id !== 'loginModal') m.classList.remove('open');
+  });
+}
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('close-modal') ||
+      e.target.classList.contains('modal') && e.target.id !== 'loginModal') {
+    cerrarModales();
+  }
+});
+
+/* ─── BADGE HELPER ───────────────────────────────────── */
+function badge(estado) {
+  const map = {
+    activo: '✅ Activo', inactivo: '⛔ Inactivo', pendiente: '⏳ Pendiente',
+    aprobado: '✅ Aprobado', rechazado: '❌ Rechazado',
+    presente: 'Presente', ausente: 'Ausente', tarde: 'Tarde',
+    urgente: '🚨 Urgente', normal: 'Normal'
+  };
+  return `<span class="badge ${estado}">${map[estado] || estado}</span>`;
 }
 
-// ==================== SELECCIÓN DE ROL EN LOGIN ====================
+/* ─── AVATAR INITIALS ────────────────────────────────── */
+function initials(nombre = '') {
+  return nombre.split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase();
+}
+
+/* ─── ROLE SELECTOR (login) ──────────────────────────── */
 function initRoleSelector() {
-  const roleBtns = document.querySelectorAll('.role-btn');
-  roleBtns.forEach(btn => {
+  document.querySelectorAll('.role-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      roleBtns.forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
     });
   });
 }
 
-// ==================== LOGIN ====================
-document.getElementById('loginBtn').onclick = async () => {
-  const email = document.getElementById('loginEmail').value.trim();
+/* ════════════════════════════════════════════════════════
+   LOGIN
+════════════════════════════════════════════════════════ */
+document.getElementById('loginBtn').addEventListener('click', async () => {
+  const email    = document.getElementById('loginEmail').value.trim();
   const password = document.getElementById('loginPassword').value.trim();
-  const roleBtn = document.querySelector('.role-btn.active');
-  const selectedRole = roleBtn?.dataset.role;
-  if (!email || !password) return showToast('Completa todos los campos', true);
-  if (!selectedRole) return showToast('Selecciona un rol', true);
+  const roleBtn  = document.querySelector('.role-btn.active');
+  const errEl    = document.getElementById('loginError');
+
+  errEl.classList.remove('visible');
+
+  if (!email || !password) {
+    errEl.textContent = 'Completa todos los campos.';
+    return errEl.classList.add('visible');
+  }
+  if (!roleBtn) {
+    errEl.textContent = 'Selecciona un rol.';
+    return errEl.classList.add('visible');
+  }
+
   try {
-    const data = await fetchAPI('/login', {
+    document.getElementById('loginBtn').textContent = 'Verificando…';
+    const data = await api('/login', {
       method: 'POST',
       body: JSON.stringify({ correo: email, contrasena: password })
     });
     currentUser = data.usuario;
-    if (currentUser.rol !== selectedRole) {
-      showToast(`Este usuario no es ${selectedRole}. Usa el rol correcto.`, true);
+    /* Validar que el rol coincida con el seleccionado */
+    if (currentUser.rol !== roleBtn.dataset.role) {
+      errEl.textContent = `Este usuario no tiene rol de ${roleBtn.dataset.role}.`;
+      errEl.classList.add('visible');
+      currentUser = null;
       return;
     }
     sessionStorage.setItem('halcones_user', JSON.stringify(currentUser));
     document.getElementById('loginModal').classList.remove('open');
     document.getElementById('app').classList.remove('hidden');
-    document.getElementById('userNameDisplay').innerText = currentUser.nombre;
+    document.getElementById('userNameDisplay').textContent = currentUser.nombre;
+    document.getElementById('userAvatar').textContent = initials(currentUser.nombre);
     inicializarPestanas();
     cargarDatosIniciales();
   } catch (err) {
-    showToast('Credenciales incorrectas o error de conexión', true);
+    errEl.textContent = 'Credenciales incorrectas o error de conexión.';
+    errEl.classList.add('visible');
+  } finally {
+    document.getElementById('loginBtn').textContent = 'INGRESAR AL SISTEMA';
   }
+});
+
+/* Enter en el formulario de login */
+['loginEmail','loginPassword'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('loginBtn').click();
+  });
+});
+
+/* ════════════════════════════════════════════════════════
+   PESTAÑAS POR ROL
+════════════════════════════════════════════════════════ */
+const tabsMap = {
+  administracion: [
+    { label: '🏠 Inicio',       panel: 'panel-inicio' },
+    { label: '📊 Dashboard',    panel: 'panel-dashboard' },
+    { label: '👥 Atletas',      panel: 'panel-atletas' },
+    { label: '💰 Pagos',        panel: 'panel-pagos' },
+    { label: '📋 Asistencia',   panel: 'panel-asistencia' },
+    { label: '📢 Comunicados',  panel: 'panel-comunicados' },
+  ],
+  entrenador: [
+    { label: '🏠 Inicio',       panel: 'panel-inicio' },
+    { label: '🏋️ Mis Grupos',  panel: 'panel-mis-grupos' },
+    { label: '📢 Comunicados',  panel: 'panel-comunicados' },
+  ],
+  tutor: [
+    { label: '🏠 Inicio',       panel: 'panel-inicio' },
+    { label: '👨‍👧 Mis Atletas', panel: 'panel-mis-atletas' },
+    { label: '💰 Pagos',        panel: 'panel-pagos' },
+    { label: '📢 Comunicados',  panel: 'panel-comunicados' },
+  ]
 };
 
-// ==================== INICIALIZACIÓN DE PESTAÑAS POR ROL ====================
 function inicializarPestanas() {
   const navTabs = document.getElementById('navTabs');
-  const tabsMap = {
-    administracion: ['Inicio', 'Dashboard', 'Atletas', 'Pagos', 'Asistencia', 'Comunicados'],
-    entrenador: ['Inicio', 'Asistencia', 'Mis Grupos', 'Comunicados'],
-    tutor: ['Inicio', 'Mis Atletas', 'Pagos', 'Comunicados']
-  };
-  const tabs = tabsMap[currentUser.rol];
-  navTabs.innerHTML = tabs.map(tab => `<button class="nav-tab" data-panel="panel-${tab.toLowerCase().replace(' ', '-')}">${tab}</button>`).join('');
+  const tabs = tabsMap[currentUser.rol] || [];
+  navTabs.innerHTML = tabs.map(t =>
+    `<button class="nav-tab" data-panel="${t.panel}">${t.label}</button>`
+  ).join('');
+
   document.querySelectorAll('.nav-tab').forEach(btn => {
     btn.addEventListener('click', () => {
       const panelId = btn.dataset.panel;
-      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-      document.getElementById(panelId).classList.add('active');
-      document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      if (panelId === 'panel-dashboard') cargarDashboard();
-      if (panelId === 'panel-atletas') cargarAtletasAdmin();
-      if (panelId === 'panel-pagos') cargarPagosPendientes();
-      if (panelId === 'panel-comunicados') cargarComunicados();
-      if (panelId === 'panel-asistencia') cargarGruposAsistencia();
-      if (panelId === 'panel-mis-atletas') cargarMisAtletas();
-      if (panelId === 'panel-mis-grupos') cargarGruposEntrenador();
+      switchPanel(panelId, btn);
     });
   });
-  document.querySelector('.nav-tab').click();
+
+  /* Activar primera pestaña */
+  const first = navTabs.querySelector('.nav-tab');
+  if (first) first.classList.add('active');
+
+  /* Botón cerrar sesión */
+  document.getElementById('logoutBtn').onclick = () => {
+    sessionStorage.clear();
+    location.reload();
+  };
+
+  /* Visibilidad de elementos por rol */
+  if (currentUser.rol === 'administracion') {
+    document.getElementById('nuevoComunicadoBtn')?.classList.remove('hidden');
+    document.getElementById('pagoEfectivoBtn')?.classList.remove('hidden');
+  }
 }
 
-// ==================== CARGA INICIAL DE DATOS ====================
+function switchPanel(panelId, tabEl) {
+  /* Ocultar todos */
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+
+  const panel = document.getElementById(panelId);
+  if (panel) panel.classList.add('active');
+  if (tabEl) tabEl.classList.add('active');
+
+  /* Cargar datos del panel */
+  const loaders = {
+    'panel-inicio':       cargarEstadisticasInicio,
+    'panel-dashboard':    cargarDashboard,
+    'panel-atletas':      cargarAtletasAdmin,
+    'panel-pagos':        cargarPagosPendientes,
+    'panel-comunicados':  cargarComunicados,
+    'panel-asistencia':   cargarGruposAsistencia,
+    'panel-mis-atletas':  cargarMisAtletas,
+    'panel-mis-grupos':   cargarGruposEntrenador,
+  };
+  if (loaders[panelId]) loaders[panelId]();
+}
+
+/* ════════════════════════════════════════════════════════
+   CARGA INICIAL
+════════════════════════════════════════════════════════ */
 async function cargarDatosIniciales() {
-  await cargarEstadisticasInicio();
-  await cargarDisciplinasYGrupos();
+  await Promise.all([
+    cargarDisciplinasYGrupos(),
+    cargarEstadisticasInicio(),
+    cargarComunicados(),
+  ]);
+
   if (currentUser.rol === 'administracion') {
-    cargarAtletasAdmin();
     cargarDashboard();
+    cargarAtletasAdmin();
   } else if (currentUser.rol === 'tutor') {
     cargarMisAtletas();
   } else if (currentUser.rol === 'entrenador') {
     cargarGruposEntrenador();
   }
-  cargarComunicados();
-  document.getElementById('logoutBtn').onclick = () => {
-    sessionStorage.clear();
-    location.reload();
-  };
-  document.getElementById('newAtletaBtn')?.addEventListener('click', () => abrirModalAtleta());
+
+  /* Event listeners globales */
+  document.getElementById('newAtletaBtn')?.addEventListener('click', abrirModalAtleta);
   document.getElementById('saveAtletaBtn')?.addEventListener('click', guardarAtleta);
   document.getElementById('pagoEfectivoBtn')?.addEventListener('click', () => {
     cargarAtletasEnSelect('efectivoAtleta');
     abrirModal('efectivoModal');
   });
   document.getElementById('guardarEfectivoBtn')?.addEventListener('click', registrarPagoEfectivo);
-  document.getElementById('subirComprobanteBtn')?.addEventListener('click', () => {
-    cargarAtletasEnSelect('compAtleta');
-    abrirModal('comprobanteModal');
-  });
-  document.getElementById('subirComprobanteBtn2')?.addEventListener('click', subirComprobante);
-  document.getElementById('nuevoComunicadoBtn')?.addEventListener('click', nuevoComunicado);
+  document.getElementById('nuevoComunicadoBtn')?.addEventListener('click', () => abrirModal('comunicadoModal'));
+  document.getElementById('guardarComunicadoBtn')?.addEventListener('click', publicarComunicado);
   document.getElementById('guardarAsistenciaBtn')?.addEventListener('click', guardarAsistencia);
   document.getElementById('guardarAsistenciaEntrenadorBtn')?.addEventListener('click', guardarAsistenciaEntrenador);
   document.getElementById('exportPDFBtn')?.addEventListener('click', exportarPDF);
   document.getElementById('exportExcelBtn')?.addEventListener('click', exportarExcel);
-  document.getElementById('searchAtleta')?.addEventListener('input', () => cargarAtletasAdmin());
-  document.getElementById('filterDisciplina')?.addEventListener('change', () => cargarAtletasAdmin());
-  document.getElementById('filterEstado')?.addEventListener('change', () => cargarAtletasAdmin());
-  document.querySelectorAll('.close-modal').forEach(btn => {
-    btn.addEventListener('click', cerrarModales);
+  document.getElementById('searchAtleta')?.addEventListener('input', cargarAtletasAdmin);
+  document.getElementById('filterDisciplina')?.addEventListener('change', cargarAtletasAdmin);
+  document.getElementById('filterEstado')?.addEventListener('change', cargarAtletasAdmin);
+  document.getElementById('confirmarEstadoPagoBtn')?.addEventListener('click', confirmarEstadoPago);
+
+  /* Tabs de pagos */
+  document.querySelectorAll('.pagos-tabs .tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.pagos-tabs .tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const tab = btn.dataset.tab;
+      if (tab === 'pendientes') cargarPagosPendientes();
+      else if (tab === 'historial') cargarHistorialPagos();
+      else if (tab === 'subir') mostrarSubirComprobante();
+    });
+  });
+
+  /* Chips de comunicados */
+  document.querySelectorAll('.filter-chips .chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.filter-chips .chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      filtrarComunicados(chip.dataset.filter);
+    });
   });
 }
 
+/* ─── Disciplinas y grupos ───────────────────────────── */
 async function cargarDisciplinasYGrupos() {
   try {
-    const disc = await fetchAPI('/disciplinas');
-    disciplinasList = disc;
-    const grupos = await fetchAPI('/grupos');
-    gruposList = grupos;
-    const selectsDisciplina = ['atletaDisciplina', 'filterDisciplina'];
-    selectsDisciplina.forEach(id => {
-      const sel = document.getElementById(id);
-      if (sel) sel.innerHTML = `<option value="">Todas</option>` + disc.map(d => `<option value="${d.id_disciplina}">${d.nombre}</option>`).join('');
-    });
-    const selectGrupo = document.getElementById('atletaGrupo');
-    if (selectGrupo) selectGrupo.innerHTML = grupos.map(g => `<option value="${g.id_grupo}">${g.nombre}</option>`).join('');
-  } catch(e) { console.error(e); }
+    disciplinasList = await api('/disciplinas');
+    gruposList = await api('/grupos');
+
+    /* Selects de filtro */
+    const fDisc = document.getElementById('filterDisciplina');
+    if (fDisc) {
+      fDisc.innerHTML = `<option value="">Todas las disciplinas</option>` +
+        disciplinasList.map(d => `<option value="${d.id_disciplina}">${d.nombre}</option>`).join('');
+    }
+    /* Select de disciplina en modal atleta */
+    const aDis = document.getElementById('atletaDisciplina');
+    if (aDis) aDis.innerHTML = disciplinasList.map(d =>
+      `<option value="${d.id_disciplina}">${d.nombre}</option>`).join('');
+
+    /* Select de grupo en modal atleta */
+    const aGru = document.getElementById('atletaGrupo');
+    if (aGru) aGru.innerHTML = gruposList.map(g =>
+      `<option value="${g.id_grupo}">${g.nombre}</option>`).join('');
+
+    /* Select de asistencia */
+    const asGru = document.getElementById('asistenciaGrupo');
+    if (asGru) {
+      asGru.innerHTML = gruposList.map(g =>
+        `<option value="${g.id_grupo}">${g.nombre}</option>`).join('');
+      asGru.addEventListener('change', cargarAtletasAsistencia);
+      /* Fecha predeterminada: hoy */
+      document.getElementById('asistenciaFecha').value = new Date().toISOString().slice(0,10);
+      if (gruposList.length) cargarAtletasAsistencia();
+    }
+  } catch(e) { console.error('cargarDisciplinasYGrupos:', e); }
 }
 
 async function cargarAtletasEnSelect(selectId) {
   try {
-    const atletas = await fetchAPI('/atletas');
-    const select = document.getElementById(selectId);
-    if (select) {
-      select.innerHTML = atletas.map(a => `<option value="${a.id_atleta}">${a.nombre} ${a.apellido}</option>`).join('');
-    }
-  } catch(e) { showToast('Error cargando atletas', true); }
+    const atletas = await api('/atletas');
+    const sel = document.getElementById(selectId);
+    if (sel) sel.innerHTML = atletas.map(a =>
+      `<option value="${a.id_atleta}">${a.nombre} ${a.apellido}</option>`).join('');
+  } catch(e) { showToast('Error cargando atletas', 'error'); }
 }
 
+/* ════════════════════════════════════════════════════════
+   PANEL INICIO — ESTADÍSTICAS
+════════════════════════════════════════════════════════ */
 async function cargarEstadisticasInicio() {
   try {
-    const stats = await fetchAPI('/estadisticas');
-    document.getElementById('totalAtletas').innerText = stats.activos || 0;
-    document.getElementById('totalDisciplinas').innerText = stats.total_disciplinas || 0;
-    document.getElementById('pagosPendientes').innerText = stats.pagos_pendientes || 0;
-    const comunicados = await fetchAPI('/comunicados');
-    document.getElementById('comunicadosRecientes').innerText = comunicados.length;
-    const ultimos = comunicados.slice(0,3);
+    const stats = await api('/estadisticas');
+    document.getElementById('totalAtletas').textContent   = stats.activos ?? 0;
+    document.getElementById('totalDisciplinas').textContent = stats.total_disciplinas ?? 0;
+    document.getElementById('pagosPendientes').textContent  = stats.pagos_pendientes ?? 0;
+
+    const comunicados = await api('/comunicados');
+    document.getElementById('comunicadosRecientes').textContent = comunicados.length;
+
     const container = document.getElementById('ultimosComunicados');
-    if (container) {
-      container.innerHTML = ultimos.map(c => `
-        <div class="aviso-card ${c.prioridad}">
-          <h4>${c.titulo}</h4>
-          <p>${c.mensaje.substring(0,100)}...</p>
-          <small>${new Date(c.fecha_publicacion).toLocaleDateString()}</small>
-        </div>
-      `).join('');
+    if (!container) return;
+    if (!comunicados.length) {
+      container.innerHTML = `<div class="empty-state"><span class="es-icon">📢</span><p>No hay comunicados recientes.</p></div>`;
+      return;
     }
-  } catch(e) { console.error(e); }
+    container.innerHTML = comunicados.slice(0,3).map(c => `
+      <div class="aviso-card ${c.prioridad || 'normal'}">
+        <h4>
+          ${c.titulo}
+          ${badge(c.prioridad || 'normal')}
+        </h4>
+        <p>${(c.mensaje || '').substring(0,100)}${c.mensaje?.length > 100 ? '…' : ''}</p>
+        <small>${new Date(c.fecha_publicacion).toLocaleDateString('es-DO')} · ${c.destinatario || 'Todo el club'}</small>
+      </div>
+    `).join('');
+  } catch(e) { console.error('cargarEstadisticasInicio:', e); }
 }
 
-// ==================== ATLETAS (ADMIN) ====================
-async function cargarAtletasAdmin() {
+/* ════════════════════════════════════════════════════════
+   PANEL DASHBOARD — GRÁFICOS + MOROSIDAD
+════════════════════════════════════════════════════════ */
+async function cargarDashboard() {
+  if (!currentUser || currentUser.rol !== 'administracion') return;
   try {
-    let atletas = await fetchAPI('/atletas');
-    const searchTerm = document.getElementById('searchAtleta')?.value.toLowerCase() || '';
-    const disciplinaId = document.getElementById('filterDisciplina')?.value;
-    const estado = document.getElementById('filterEstado')?.value;
-    atletas = atletas.filter(a => {
-      const matchName = (a.nombre + ' ' + a.apellido).toLowerCase().includes(searchTerm);
-      const matchDisc = !disciplinaId || a.id_disciplina == disciplinaId;
-      const matchEstado = !estado || a.estado === estado;
-      return matchName && matchDisc && matchEstado;
+    const stats = await api('/estadisticas');
+
+    /* KPIs */
+    document.getElementById('kpiContainer').innerHTML = [
+      { icon:'👥', n: stats.total_atletas,    label:'Atletas totales' },
+      { icon:'✅', n: stats.activos,           label:'Activos' },
+      { icon:'⏳', n: stats.pagos_pendientes,  label:'Pagos pendientes' },
+      { icon:'💰', n: stats.pagos_aprobados,   label:'Pagos aprobados' },
+      { icon:'❌', n: stats.pagos_rechazados ?? 0, label:'Pagos rechazados' },
+    ].map(k => `
+      <div class="kpi-card">
+        <span class="kpi-icon">${k.icon}</span>
+        <h3>${k.n ?? 0}</h3>
+        <span>${k.label}</span>
+      </div>
+    `).join('');
+
+    /* Gráfico barras: atletas por disciplina */
+    const discData = await api('/estadisticas/disciplinas');
+    const ctxBar = document.getElementById('disciplinasChart').getContext('2d');
+    if (charts.bar) charts.bar.destroy();
+    charts.bar = new Chart(ctxBar, {
+      type: 'bar',
+      data: {
+        labels: discData.map(d => d.nombre),
+        datasets: [{
+          label: 'Atletas',
+          data: discData.map(d => d.total),
+          backgroundColor: 'rgba(0,115,255,.7)',
+          borderColor: '#0073FF',
+          borderWidth: 1,
+          borderRadius: 6,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => ` ${ctx.raw} atletas` } }
+        },
+        scales: {
+          x: { ticks: { color: '#6B80A0', font: { family: 'DM Sans', size: 11 } }, grid: { color: 'rgba(0,115,255,.06)' } },
+          y: { ticks: { color: '#6B80A0', font: { family: 'DM Sans', size: 11 } }, grid: { color: 'rgba(0,115,255,.06)' }, beginAtZero: true }
+        }
+      }
     });
-    const tbody = document.getElementById('atletasTableBody');
+
+    /* Gráfico pastel: estado de pagos */
+    const ctxPie = document.getElementById('pagosEstadoChart').getContext('2d');
+    if (charts.pie) charts.pie.destroy();
+    charts.pie = new Chart(ctxPie, {
+      type: 'doughnut',
+      data: {
+        labels: ['Aprobados', 'Pendientes', 'Rechazados'],
+        datasets: [{
+          data: [
+            stats.pagos_aprobados  ?? 0,
+            stats.pagos_pendientes ?? 0,
+            stats.pagos_rechazados ?? 0
+          ],
+          backgroundColor: ['rgba(34,197,94,.75)', 'rgba(255,197,36,.75)', 'rgba(239,68,68,.75)'],
+          borderColor:     ['#22C55E', '#FFC524', '#EF4444'],
+          borderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: true,
+        cutout: '62%',
+        plugins: {
+          legend: { position: 'bottom', labels: { color: '#D2DCED', padding: 14, font: { family: 'DM Sans', size: 12 } } }
+        }
+      }
+    });
+
+    /* Gráfico línea: pagos por mes (usa datos del backend si existen, sino los infiere) */
+    const pagos = await api('/pagos');
+    const meses = Array.from({length:12}, (_, i) => i);
+    const nombresMes = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    const aprobados = pagos.filter(p => p.estado === 'aprobado');
+    const montosPorMes = meses.map(m => {
+      return aprobados
+        .filter(p => p.fecha_pago && new Date(p.fecha_pago).getMonth() === m)
+        .reduce((s, p) => s + Number(p.monto), 0);
+    });
+    const ctxLine = document.getElementById('pagosMesChart').getContext('2d');
+    if (charts.line) charts.line.destroy();
+    charts.line = new Chart(ctxLine, {
+      type: 'line',
+      data: {
+        labels: nombresMes,
+        datasets: [{
+          label: 'RD$ aprobados',
+          data: montosPorMes,
+          borderColor: '#0073FF',
+          backgroundColor: 'rgba(0,115,255,.1)',
+          fill: true,
+          tension: 0.4,
+          pointBackgroundColor: '#0073FF',
+          pointRadius: 4,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => ` RD$ ${ctx.raw.toLocaleString()}` } }
+        },
+        scales: {
+          x: { ticks: { color: '#6B80A0', font: { family: 'DM Sans', size: 11 } }, grid: { color: 'rgba(0,115,255,.06)' } },
+          y: { ticks: { color: '#6B80A0', font: { family: 'DM Sans', size: 11 }, callback: v => `RD$ ${v}` }, grid: { color: 'rgba(0,115,255,.06)' }, beginAtZero: true }
+        }
+      }
+    });
+
+    /* Tabla de morosidad (atletas con pagos pendientes acumulados) */
+    const atletas = await api('/atletas');
+    const morosos = [];
+    for (const a of atletas.filter(a => a.estado === 'activo')) {
+      const pagoAtleta = pagos.filter(p => p.id_atleta === a.id_atleta && p.estado === 'pendiente');
+      if (pagoAtleta.length >= 1) {
+        morosos.push({ ...a, pendientes: pagoAtleta.length });
+      }
+    }
+    const tbody = document.getElementById('morosidadBody');
+    if (tbody) {
+      tbody.innerHTML = morosos.length ? morosos.map(a => `
+        <tr>
+          <td><div class="td-primary">${a.nombre} ${a.apellido}</div></td>
+          <td>${a.disciplina || '—'}</td>
+          <td>${a.tutor || '—'}</td>
+          <td>${a.telefono_tutor || '—'}</td>
+          <td>${badge(a.pendientes >= 3 ? 'rechazado' : 'pendiente')} ${a.pendientes} mes(es)</td>
+        </tr>
+      `).join('') : `<tr><td colspan="5" class="table-empty"><span class="es-icon">✅</span><p>Sin alertas de morosidad</p></td></tr>`;
+    }
+
+  } catch(e) { console.error('cargarDashboard:', e); showToast('Error cargando dashboard', 'error'); }
+}
+
+/* ════════════════════════════════════════════════════════
+   PANEL ATLETAS (admin)
+════════════════════════════════════════════════════════ */
+async function cargarAtletasAdmin() {
+  const tbody = document.getElementById('atletasTableBody');
+  if (!tbody) return;
+  try {
+    let atletas = await api('/atletas');
+    atletasList = atletas;
+
+    const search = document.getElementById('searchAtleta')?.value.toLowerCase() || '';
+    const disc   = document.getElementById('filterDisciplina')?.value;
+    const estado = document.getElementById('filterEstado')?.value;
+
+    atletas = atletas.filter(a => {
+      const nombre = `${a.nombre} ${a.apellido}`.toLowerCase();
+      return (
+        (!search || nombre.includes(search)) &&
+        (!disc   || String(a.id_disciplina) === disc) &&
+        (!estado || a.estado === estado)
+      );
+    });
+
+    if (!atletas.length) {
+      tbody.innerHTML = `<tr><td colspan="6" class="table-empty"><span class="es-icon">👥</span><p>No se encontraron atletas.</p></td></tr>`;
+      return;
+    }
+
     tbody.innerHTML = atletas.map(a => `
       <tr>
-        <td>${a.nombre} ${a.apellido}</td>
-        <td>${a.disciplina || '-'}</td>
-        <td>${a.tutor || '-'}</td>
-        <td><span class="badge ${a.estado}">${a.estado}</span></td>
-        <td><button class="btn-outline-small" onclick="editarAtleta(${a.id_atleta})">Editar</button>
-          <button class="btn-outline-small" onclick="eliminarAtleta(${a.id_atleta})">Eliminar</button></td>
+        <td>
+          <div class="td-primary">${a.nombre} ${a.apellido}</div>
+          <div class="td-secondary">Edad: ${a.fecha_nacimiento ? calcularEdad(a.fecha_nacimiento) + ' años' : '—'}</div>
+        </td>
+        <td>${a.disciplina || '—'}</td>
+        <td>${a.grupo || '—'}</td>
+        <td>
+          <div class="td-primary">${a.tutor || '—'}</div>
+          <div class="td-secondary">${a.telefono_tutor || ''}</div>
+        </td>
+        <td>${badge(a.estado)}</td>
+        <td>
+          <div class="td-actions">
+            <button class="btn-outline-small" onclick="editarAtleta(${a.id_atleta})">✏️ Editar</button>
+            ${a.estado === 'pendiente'
+              ? `<button class="btn-success-sm" onclick="cambiarEstadoAtleta(${a.id_atleta},'activo')">✅</button>`
+              : ''}
+            <button class="btn-danger-sm" onclick="eliminarAtleta(${a.id_atleta})">🗑️</button>
+          </div>
+        </td>
       </tr>
     `).join('');
-  } catch(e) { showToast('Error cargando atletas', true); }
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="6" class="table-empty"><p>Error cargando atletas: ${e.message}</p></td></tr>`;
+  }
+}
+
+function calcularEdad(fechaNac) {
+  const hoy = new Date();
+  const nac = new Date(fechaNac);
+  let edad = hoy.getFullYear() - nac.getFullYear();
+  if (hoy.getMonth() < nac.getMonth() || (hoy.getMonth() === nac.getMonth() && hoy.getDate() < nac.getDate())) edad--;
+  return edad;
 }
 
 window.editarAtleta = async (id) => {
   try {
-    const atleta = await fetchAPI(`/atletas/${id}`);
-    document.getElementById('atletaId').value = atleta.id_atleta;
-    document.getElementById('atletaNombre').value = atleta.nombre;
-    document.getElementById('atletaApellido').value = atleta.apellido;
-    document.getElementById('atletaFechaNac').value = atleta.fecha_nacimiento.split('T')[0];
-    document.getElementById('atletaDisciplina').value = atleta.id_disciplina;
-    document.getElementById('atletaGrupo').value = atleta.id_grupo;
-    document.getElementById('atletaModalTitle').innerText = 'Editar Atleta';
+    const a = await api(`/atletas/${id}`);
+    document.getElementById('atletaId').value       = a.id_atleta;
+    document.getElementById('atletaNombre').value   = a.nombre;
+    document.getElementById('atletaApellido').value = a.apellido;
+    document.getElementById('atletaFechaNac').value = a.fecha_nacimiento?.split('T')[0] || '';
+    document.getElementById('atletaDisciplina').value = a.id_disciplina;
+    document.getElementById('atletaGrupo').value    = a.id_grupo;
+    document.getElementById('atletaTutorNombre').value   = a.tutor_nombre || a.tutor || '';
+    document.getElementById('atletaTutorTelefono').value = a.telefono_tutor || '';
+    document.getElementById('atletaTutorEmail').value    = a.email_tutor || '';
+    document.getElementById('atletaModalTitle').textContent = '✏️ Editar Atleta';
     abrirModal('atletaModal');
-  } catch(e) { showToast('Error cargando atleta', true); }
+  } catch(e) { showToast('Error cargando atleta: ' + e.message, 'error'); }
+};
+
+window.cambiarEstadoAtleta = async (id, estado) => {
+  try {
+    await api(`/atletas/${id}/estado`, { method:'PUT', body: JSON.stringify({ estado }) });
+    showToast(`Atleta marcado como ${estado}`, 'success');
+    cargarAtletasAdmin();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
 };
 
 window.eliminarAtleta = async (id) => {
-  if(confirm('¿Eliminar este atleta?')){
-    await fetchAPI(`/atletas/${id}`, { method: 'DELETE' });
-    showToast('Atleta eliminado');
-    cargarAtletasAdmin();
-  }
-};
-
-async function guardarAtleta() {
-  const id = document.getElementById('atletaId').value;
-  const data = {
-    nombre: document.getElementById('atletaNombre').value,
-    apellido: document.getElementById('atletaApellido').value,
-    fecha_nacimiento: document.getElementById('atletaFechaNac').value,
-    id_disciplina: document.getElementById('atletaDisciplina').value,
-    id_grupo: document.getElementById('atletaGrupo').value,
-    id_tutor: 1
-  };
-  if (!data.nombre || !data.apellido || !data.fecha_nacimiento || !data.id_disciplina) {
-    return showToast('Completa los campos obligatorios', true);
-  }
+  if (!confirm('¿Eliminar este atleta? Esta acción no se puede deshacer.')) return;
   try {
-    if(id) await fetchAPI(`/atletas/${id}`, { method: 'PUT', body: JSON.stringify(data) });
-    else await fetchAPI('/atletas', { method: 'POST', body: JSON.stringify(data) });
-    showToast('Atleta guardado');
-    cerrarModales();
+    await api(`/atletas/${id}`, { method:'DELETE' });
+    showToast('Atleta eliminado', 'success');
     cargarAtletasAdmin();
-  } catch(e) { showToast('Error guardando atleta', true); }
-}
+  } catch(e) { showToast('Error eliminando atleta', 'error'); }
+};
 
 function abrirModalAtleta() {
   document.getElementById('atletaId').value = '';
-  document.getElementById('atletaModalTitle').innerText = 'Nuevo Atleta';
-  document.querySelectorAll('#atletaModal input, #atletaModal select').forEach(i => i.value = '');
+  document.getElementById('atletaModalTitle').textContent = '➕ Nuevo Atleta';
+  document.querySelectorAll('#atletaModal input, #atletaModal textarea').forEach(i => i.value = '');
   abrirModal('atletaModal');
 }
 
-// ==================== PAGOS ====================
-async function cargarPagosPendientes() {
+async function guardarAtleta() {
+  const id = document.getElementById('atletaId').value;
+  const nombre      = document.getElementById('atletaNombre').value.trim();
+  const apellido    = document.getElementById('atletaApellido').value.trim();
+  const fechaNac    = document.getElementById('atletaFechaNac').value;
+  const idDisc      = document.getElementById('atletaDisciplina').value;
+  const idGrupo     = document.getElementById('atletaGrupo').value;
+  const tutorNombre = document.getElementById('atletaTutorNombre').value.trim();
+  const tutorTel    = document.getElementById('atletaTutorTelefono').value.trim();
+  const tutorEmail  = document.getElementById('atletaTutorEmail').value.trim();
+
+  if (!nombre || !apellido || !fechaNac || !idDisc) {
+    return showToast('Completa nombre, apellido, fecha y disciplina', 'error');
+  }
+
+  const data = {
+    nombre, apellido,
+    fecha_nacimiento: fechaNac,
+    id_disciplina: idDisc,
+    id_grupo: idGrupo || null,
+    nombre_tutor: tutorNombre,
+    telefono_tutor: tutorTel,
+    email_tutor: tutorEmail,
+  };
+
   try {
-    const pagos = await fetchAPI('/pagos');
-    const pendientes = pagos.filter(p => p.estado === 'pendiente');
-    const container = document.getElementById('pagosContent');
-    if (!container) return;
-    container.innerHTML = pendientes.map(p => `
-      <div class="pago-card">
-        <div class="pago-info"><strong>${p.nombre_atleta} ${p.apellido_atleta}</strong> - ${p.tipo_pago} - RD$ ${p.monto}</div>
-        ${currentUser.rol === 'administracion' ? `
-          <div class="pago-actions">
-            <button class="btn-primary" onclick="aprobarPago(${p.id_pago}, 'aprobado')">Aprobar</button>
-            <button class="btn-secondary" onclick="aprobarPago(${p.id_pago}, 'rechazado')">Rechazar</button>
-          </div>
-        ` : '<span class="badge pendiente">Pendiente</span>'}
-      </div>
-    `).join('');
-    document.querySelectorAll('.pagos-tabs .tab-btn').forEach(btn => {
-      btn.onclick = () => {
-        document.querySelectorAll('.pagos-tabs .tab-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        const tab = btn.dataset.tab;
-        if (tab === 'pendientes') cargarPagosPendientes();
-        else if (tab === 'historial') cargarHistorialPagos();
-        else if (tab === 'subir') mostrarSubirComprobante();
-      };
-    });
-  } catch(e) { console.error(e); }
+    if (id) {
+      await api(`/atletas/${id}`, { method:'PUT', body: JSON.stringify(data) });
+      showToast('Atleta actualizado', 'success');
+    } else {
+      await api('/atletas', { method:'POST', body: JSON.stringify(data) });
+      showToast('Atleta registrado — pendiente de aprobación', 'success');
+    }
+    cerrarModales();
+    cargarAtletasAdmin();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
-window.aprobarPago = async (id, estado) => {
-  let motivo = '';
-  if (estado === 'rechazado') motivo = prompt('Motivo del rechazo:');
-  try {
-    await fetchAPI(`/pagos/${id}/estado`, { method: 'PUT', body: JSON.stringify({ estado, motivo_rechazo: motivo }) });
-    showToast(`Pago ${estado}`);
-    cargarPagosPendientes();
-  } catch(e) { showToast('Error', true); }
-};
+/* ════════════════════════════════════════════════════════
+   PANEL PAGOS
+════════════════════════════════════════════════════════ */
+async function cargarPagosPendientes() {
+  const container = document.getElementById('pagosContent');
+  if (!container) return;
+  container.innerHTML = '<div class="spinner"></div>';
 
-async function cargarHistorialPagos() {
   try {
-    const pagos = await fetchAPI('/pagos');
-    const container = document.getElementById('pagosContent');
-    container.innerHTML = pagos.map(p => `
-      <div class="pago-card">
-        <div class="pago-info"><strong>${p.nombre_atleta} ${p.apellido_atleta}</strong> - ${p.tipo_pago} - RD$ ${p.monto} - ${p.estado}</div>
-        ${p.comprobante ? `<a href="${API_BASE}${p.comprobante}" target="_blank" class="btn-outline-small">Ver comprobante</a>` : ''}
+    let pagos = await api('/pagos');
+
+    /* Filtrar por tutor */
+    if (currentUser.rol === 'tutor') {
+      const atletas = await api('/atletas');
+      const misIds = new Set(atletas.filter(a => a.id_tutor === currentUser.id).map(a => a.id_atleta));
+      pagos = pagos.filter(p => misIds.has(p.id_atleta));
+    }
+
+    const pendientes = pagos.filter(p => p.estado === 'pendiente');
+    if (!pendientes.length) {
+      container.innerHTML = `<div class="empty-state"><span class="es-icon">✅</span><h3>Sin pagos pendientes</h3><p>No hay pagos esperando acción.</p></div>`;
+      return;
+    }
+
+    container.innerHTML = pendientes.map(p => `
+      <div class="pago-card ${p.estado}">
+        <div class="pago-info">
+          <div class="pago-nombre">${p.nombre_atleta ?? ''} ${p.apellido_atleta ?? ''}</div>
+          <div class="pago-meta">
+            <span>${p.tipo_pago ?? '—'}</span>
+            <span>·</span>
+            <span>${p.metodo_pago ?? '—'}</span>
+            <span>·</span>
+            <span>${p.fecha_pago ? new Date(p.fecha_pago).toLocaleDateString('es-DO') : 'Sin fecha'}</span>
+            ${p.telefono_tutor ? `<span>· 📞 ${p.telefono_tutor}</span>` : ''}
+          </div>
+          ${badge(p.estado)}
+        </div>
+        <div class="pago-monto ${p.estado}">RD$ ${Number(p.monto ?? 0).toLocaleString()}</div>
+        <div class="pago-actions">
+          ${p.comprobante ? `<a class="comp-link" href="${API_BASE}${p.comprobante}" target="_blank">📎 Ver comprobante</a>` : ''}
+          ${currentUser.rol === 'administracion' ? `
+            <button class="btn-success-sm" onclick="abrirEstadoPago(${p.id_pago},'aprobado','${p.nombre_atleta} ${p.apellido_atleta}')">✅ Aprobar</button>
+            <button class="btn-danger-sm"  onclick="abrirEstadoPago(${p.id_pago},'rechazado','${p.nombre_atleta} ${p.apellido_atleta}')">❌ Rechazar</button>
+          ` : ''}
+        </div>
       </div>
     `).join('');
-  } catch(e) { console.error(e); }
+  } catch(e) {
+    container.innerHTML = `<div class="empty-state"><p>Error cargando pagos: ${e.message}</p></div>`;
+  }
+}
+
+async function cargarHistorialPagos() {
+  const container = document.getElementById('pagosContent');
+  if (!container) return;
+  container.innerHTML = '<div class="spinner"></div>';
+
+  try {
+    let pagos = await api('/pagos');
+
+    if (currentUser.rol === 'tutor') {
+      const atletas = await api('/atletas');
+      const misIds = new Set(atletas.filter(a => a.id_tutor === currentUser.id).map(a => a.id_atleta));
+      pagos = pagos.filter(p => misIds.has(p.id_atleta));
+    }
+
+    if (!pagos.length) {
+      container.innerHTML = `<div class="empty-state"><span class="es-icon">💰</span><p>No hay pagos registrados.</p></div>`;
+      return;
+    }
+
+    container.innerHTML = pagos.map(p => `
+      <div class="pago-card ${p.estado}">
+        <div class="pago-info">
+          <div class="pago-nombre">${p.nombre_atleta ?? ''} ${p.apellido_atleta ?? ''}</div>
+          <div class="pago-meta">
+            <span>${p.tipo_pago ?? '—'}</span> · <span>${p.metodo_pago ?? '—'}</span>
+            · <span>${p.fecha_pago ? new Date(p.fecha_pago).toLocaleDateString('es-DO') : '—'}</span>
+          </div>
+          ${badge(p.estado)}
+          ${p.motivo_rechazo ? `<div style="font-size:12px;color:var(--danger);margin-top:4px;">Motivo: ${p.motivo_rechazo}</div>` : ''}
+        </div>
+        <div class="pago-monto ${p.estado}">RD$ ${Number(p.monto ?? 0).toLocaleString()}</div>
+        <div class="pago-actions">
+          ${p.comprobante ? `<a class="comp-link" href="${API_BASE}${p.comprobante}" target="_blank">📎 Comprobante</a>` : ''}
+        </div>
+      </div>
+    `).join('');
+  } catch(e) {
+    container.innerHTML = `<div class="empty-state"><p>Error: ${e.message}</p></div>`;
+  }
 }
 
 function mostrarSubirComprobante() {
   const container = document.getElementById('pagosContent');
+  if (!container) return;
   container.innerHTML = `
-    <div class="upload-area">
-      <div class="upload-icon">📄</div>
+    <div class="upload-area" onclick="document.getElementById('compArchivo').click()">
+      <span class="upload-icon">📄</span>
       <h4>SUBIR COMPROBANTE DE TRANSFERENCIA</h4>
-      <p>JPG, PNG o PDF · Máximo 5 MB</p>
-      <div class="upload-form">
-        <select id="compAtleta" class="input-field"></select>
-        <select id="compTipo" class="input-field"><option value="mensualidad">Mensualidad</option><option value="reinscripcion">Reinscripción</option></select>
-        <input type="number" id="compMonto" placeholder="Monto en RD$" class="input-field">
-        <input type="file" id="compArchivo" accept="image/*,application/pdf" class="input-field">
-        <button id="subirComprobanteBtn2" class="btn-primary">Enviar comprobante</button>
+      <p>JPG, PNG o PDF · Máximo 5 MB · Haz clic para seleccionar</p>
+      <div class="upload-form" onclick="event.stopPropagation()">
+        <div>
+          <label>Atleta</label>
+          <select id="compAtleta" class="input-field"></select>
+        </div>
+        <div>
+          <label>Tipo de pago</label>
+          <select id="compTipo" class="input-field">
+            <option value="mensualidad">Mensualidad</option>
+            <option value="reinscripcion">Reinscripción anual</option>
+          </select>
+        </div>
+        <div>
+          <label>Monto (RD$)</label>
+          <input type="number" id="compMonto" placeholder="Ej: 1500" class="input-field">
+        </div>
+        <div>
+          <label>Archivo del comprobante</label>
+          <input type="file" id="compArchivo" accept="image/*,application/pdf" class="input-field">
+        </div>
+        <button class="btn-primary" onclick="subirComprobante()">📤 Enviar comprobante</button>
       </div>
     </div>
   `;
   cargarAtletasEnSelect('compAtleta');
-  document.getElementById('subirComprobanteBtn2').onclick = subirComprobante;
 }
 
 async function subirComprobante() {
-  const fileInput = document.getElementById('compArchivo');
-  if (!fileInput.files[0]) return showToast('Seleccione un archivo', true);
+  const file = document.getElementById('compArchivo')?.files[0];
+  if (!file) return showToast('Selecciona un archivo', 'error');
+  const monto = document.getElementById('compMonto')?.value;
+  if (!monto) return showToast('Ingresa el monto', 'error');
+
   const formData = new FormData();
-  formData.append('id_atleta', document.getElementById('compAtleta').value);
-  formData.append('tipo_pago', document.getElementById('compTipo').value);
-  formData.append('monto', document.getElementById('compMonto').value);
+  formData.append('id_atleta',   document.getElementById('compAtleta').value);
+  formData.append('tipo_pago',   document.getElementById('compTipo').value);
+  formData.append('monto',       monto);
   formData.append('metodo_pago', 'transferencia');
-  formData.append('comprobante', fileInput.files[0]);
+  formData.append('comprobante', file);
+
   try {
-    const res = await fetch(`${API_BASE}/pagos/con-comprobante`, { method: 'POST', body: formData });
-    if (res.ok) showToast('Comprobante enviado, pendiente de aprobación');
-    else showToast('Error al subir', true);
-    cerrarModales();
-    cargarPagosPendientes();
-  } catch(e) { showToast('Error de conexión', true); }
+    const res = await fetch(`${API_BASE}/pagos/con-comprobante`, { method:'POST', body: formData });
+    if (res.ok) {
+      showToast('Comprobante enviado — pendiente de aprobación', 'success');
+      cargarPagosPendientes();
+    } else showToast('Error al subir', 'error');
+  } catch(e) { showToast('Error de conexión', 'error'); }
 }
 
 async function registrarPagoEfectivo() {
   const data = {
-    id_atleta: document.getElementById('efectivoAtleta').value,
-    tipo_pago: document.getElementById('efectivoTipo').value,
-    monto: document.getElementById('efectivoMonto').value,
-    metodo_pago: 'efectivo'
+    id_atleta:  document.getElementById('efectivoAtleta').value,
+    tipo_pago:  document.getElementById('efectivoTipo').value,
+    monto:      document.getElementById('efectivoMonto').value,
+    metodo_pago:'efectivo'
   };
-  if (!data.id_atleta || !data.monto) return showToast('Complete los datos', true);
+  if (!data.id_atleta || !data.monto) return showToast('Completa todos los campos', 'error');
   try {
-    await fetchAPI('/pagos', { method: 'POST', body: JSON.stringify(data) });
-    showToast('Pago registrado');
+    await api('/pagos', { method:'POST', body: JSON.stringify(data) });
+    showToast('Pago en efectivo registrado (aprobado automáticamente)', 'success');
     cerrarModales();
     cargarPagosPendientes();
-  } catch(e) { showToast('Error', true); }
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
-// ==================== ASISTENCIA ====================
-async function cargarGruposAsistencia() {
+/* Modal aprobar/rechazar pago */
+window.abrirEstadoPago = function(id, accion, nombreAtleta) {
+  document.getElementById('estadoPagoId').value     = id;
+  document.getElementById('estadoPagoAccion').value = accion;
+  document.getElementById('estadoPagoTitle').textContent =
+    accion === 'aprobado' ? `✅ Aprobar pago de ${nombreAtleta}` : `❌ Rechazar pago de ${nombreAtleta}`;
+  document.getElementById('estadoPagoDesc').textContent =
+    accion === 'aprobado'
+      ? 'El pago quedará marcado como aprobado. El padre/tutor podrá verlo en su historial.'
+      : 'Indica el motivo. El padre/tutor verá esta razón al consultar sus pagos.';
+  const motivoWrap = document.getElementById('motivoWrap');
+  motivoWrap?.classList.toggle('hidden', accion !== 'rechazado');
+  if (document.getElementById('motivoRechazo')) document.getElementById('motivoRechazo').value = '';
+  abrirModal('estadoPagoModal');
+};
+
+async function confirmarEstadoPago() {
+  const id     = document.getElementById('estadoPagoId').value;
+  const accion = document.getElementById('estadoPagoAccion').value;
+  const motivo = document.getElementById('motivoRechazo')?.value.trim();
+
+  if (accion === 'rechazado' && !motivo) {
+    return showToast('Ingresa el motivo del rechazo', 'error');
+  }
   try {
-    const grupos = await fetchAPI('/grupos');
-    const select = document.getElementById('asistenciaGrupo');
-    select.innerHTML = grupos.map(g => `<option value="${g.id_grupo}">${g.nombre}</option>`).join('');
-    document.getElementById('asistenciaFecha').value = new Date().toISOString().slice(0,10);
-    cargarAtletasAsistencia();
-    select.onchange = cargarAtletasAsistencia;
-  } catch(e) { console.error(e); }
+    await api(`/pagos/${id}/estado`, {
+      method: 'PUT',
+      body: JSON.stringify({ estado: accion, motivo_rechazo: motivo || undefined })
+    });
+    showToast(`Pago ${accion}`, 'success');
+    cerrarModales();
+    cargarPagosPendientes();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+/* ════════════════════════════════════════════════════════
+   PANEL ASISTENCIA (admin)
+════════════════════════════════════════════════════════ */
+async function cargarGruposAsistencia() {
+  await cargarDisciplinasYGrupos();
 }
 
 async function cargarAtletasAsistencia() {
-  const grupo = document.getElementById('asistenciaGrupo').value;
+  const grupo = document.getElementById('asistenciaGrupo')?.value;
   if (!grupo) return;
+  attEstados = {};
+  actualizarResumenAsistencia();
+
   try {
-    const atletas = await fetchAPI(`/asistencia/grupo/${grupo}/atletas`);
+    const atletas = await api(`/asistencia/grupo/${grupo}/atletas`);
     const container = document.getElementById('asistenciaLista');
+    if (!container) return;
+
+    if (!atletas.length) {
+      container.innerHTML = `<div class="empty-state"><span class="es-icon">👥</span><p>Este grupo no tiene atletas.</p></div>`;
+      return;
+    }
+
     container.innerHTML = atletas.map(a => `
-      <div class="asistencia-fila">
-        <span>${a.nombre} ${a.apellido}</span>
-        <select data-id="${a.id_atleta}">
-          <option value="presente">Presente</option>
-          <option value="ausente">Ausente</option>
-          <option value="tarde">Tarde</option>
-        </select>
-        <input type="text" placeholder="Observación" data-obs="${a.id_atleta}">
+      <div class="asistencia-fila" data-id="${a.id_atleta}">
+        <div class="att-nombre">${a.nombre} ${a.apellido}</div>
+        <div class="att-estado-btns">
+          <button class="att-btn presente" onclick="marcarAsistencia(${a.id_atleta},'presente',this)">✅ Presente</button>
+          <button class="att-btn ausente"  onclick="marcarAsistencia(${a.id_atleta},'ausente',this)">❌ Ausente</button>
+          <button class="att-btn tarde"    onclick="marcarAsistencia(${a.id_atleta},'tarde',this)">⏰ Tarde</button>
+        </div>
+        <input type="text" class="input-field att-obs-input"
+               id="obs-${a.id_atleta}" placeholder="Observación…">
       </div>
     `).join('');
-  } catch(e) { console.error(e); }
+
+    actualizarResumenAsistencia();
+  } catch(e) {
+    document.getElementById('asistenciaLista').innerHTML = `<div class="empty-state"><p>Error: ${e.message}</p></div>`;
+  }
+}
+
+window.marcarAsistencia = function(id, estado, btn) {
+  /* Desmarcar los otros botones de la fila */
+  const fila = btn.closest('.asistencia-fila');
+  fila.querySelectorAll('.att-btn').forEach(b => b.classList.remove('sel'));
+  btn.classList.add('sel');
+  attEstados[id] = estado;
+  actualizarResumenAsistencia();
+};
+
+function actualizarResumenAsistencia() {
+  const vals = Object.values(attEstados);
+  const total = document.querySelectorAll('.asistencia-fila').length;
+  document.getElementById('sum-presentes').textContent = vals.filter(v=>v==='presente').length;
+  document.getElementById('sum-ausentes').textContent  = vals.filter(v=>v==='ausente').length;
+  document.getElementById('sum-tardanzas').textContent = vals.filter(v=>v==='tarde').length;
+  document.getElementById('sum-sin').textContent       = total - vals.length;
 }
 
 async function guardarAsistencia() {
-  const grupo = document.getElementById('asistenciaGrupo').value;
-  const fecha = document.getElementById('asistenciaFecha').value;
-  const registros = [];
-  document.querySelectorAll('#asistenciaLista .asistencia-fila').forEach(row => {
-    const select = row.querySelector('select');
-    const obsInput = row.querySelector('input');
-    registros.push({
-      id_atleta: select.dataset.id,
-      id_grupo: grupo,
-      fecha,
-      estado: select.value,
-      observacion: obsInput.value
+  const grupo = document.getElementById('asistenciaGrupo')?.value;
+  const fecha = document.getElementById('asistenciaFecha')?.value;
+  if (!grupo || !fecha) return showToast('Selecciona grupo y fecha', 'error');
+
+  const registros = Array.from(document.querySelectorAll('#asistenciaLista .asistencia-fila'))
+    .map(row => {
+      const id = row.dataset.id;
+      return {
+        id_atleta:   id,
+        id_grupo:    grupo,
+        fecha,
+        estado:      attEstados[id] || 'ausente',
+        observacion: document.getElementById(`obs-${id}`)?.value || ''
+      };
     });
-  });
-  if (registros.length === 0) return;
+
+  if (!registros.length) return showToast('No hay atletas para registrar', 'error');
   try {
-    await fetchAPI('/asistencia', { method: 'POST', body: JSON.stringify({ registros }) });
-    showToast('Asistencia guardada');
-  } catch(e) { showToast('Error', true); }
+    await api('/asistencia', { method:'POST', body: JSON.stringify({ registros }) });
+    showToast(`Asistencia de ${registros.length} atletas guardada ✅`, 'success');
+  } catch(e) { showToast('Error guardando asistencia: ' + e.message, 'error'); }
 }
 
-// ==================== ENTRENADOR ====================
+/* ════════════════════════════════════════════════════════
+   PANEL ENTRENADOR — MIS GRUPOS
+════════════════════════════════════════════════════════ */
 async function cargarGruposEntrenador() {
+  if (!currentUser || currentUser.rol !== 'entrenador') return;
   try {
-    const grupos = await fetchAPI('/grupos');
+    const grupos = await api('/grupos');
     const misGrupos = grupos.filter(g => g.id_entrenador === currentUser.id);
-    const select = document.getElementById('entrenadorGrupo');
-    select.innerHTML = misGrupos.map(g => `<option value="${g.id_grupo}">${g.nombre}</option>`).join('');
+    const sel = document.getElementById('entrenadorGrupo');
+    if (!sel) return;
+    sel.innerHTML = misGrupos.length
+      ? misGrupos.map(g => `<option value="${g.id_grupo}">${g.nombre}</option>`).join('')
+      : `<option value="">Sin grupos asignados</option>`;
+    sel.onchange = cargarAtletasEntrenador;
     if (misGrupos.length) cargarAtletasEntrenador();
-    select.onchange = cargarAtletasEntrenador;
-  } catch(e) { console.error(e); }
+  } catch(e) { console.error('cargarGruposEntrenador:', e); }
 }
 
 async function cargarAtletasEntrenador() {
-  const grupo = document.getElementById('entrenadorGrupo').value;
+  const grupo = document.getElementById('entrenadorGrupo')?.value;
   if (!grupo) return;
   try {
-    const atletas = await fetchAPI(`/asistencia/grupo/${grupo}/atletas`);
+    const atletas = await api(`/asistencia/grupo/${grupo}/atletas`);
     const container = document.getElementById('entrenadorAsistenciaLista');
+    if (!container) return;
+
+    if (!atletas.length) {
+      container.innerHTML = `<div class="empty-state"><span class="es-icon">👥</span><p>Este grupo no tiene atletas.</p></div>`;
+      return;
+    }
+
     container.innerHTML = atletas.map(a => `
-      <div class="asistencia-fila">
-        <span>${a.nombre} ${a.apellido}</span>
-        <select data-id="${a.id_atleta}">
-          <option value="presente">Presente</option>
-          <option value="ausente">Ausente</option>
-          <option value="tarde">Tarde</option>
-        </select>
-        <input type="text" placeholder="Observación">
+      <div class="asistencia-fila" data-id="${a.id_atleta}">
+        <div class="att-nombre">${a.nombre} ${a.apellido}</div>
+        <div class="att-estado-btns">
+          <button class="att-btn presente" onclick="marcarEnt(${a.id_atleta},'presente',this)">✅ Presente</button>
+          <button class="att-btn ausente"  onclick="marcarEnt(${a.id_atleta},'ausente',this)">❌ Ausente</button>
+          <button class="att-btn tarde"    onclick="marcarEnt(${a.id_atleta},'tarde',this)">⏰ Tarde</button>
+        </div>
+        <input type="text" class="input-field att-obs-input" id="eobs-${a.id_atleta}" placeholder="Observación…">
       </div>
     `).join('');
-  } catch(e) { console.error(e); }
+  } catch(e) { console.error('cargarAtletasEntrenador:', e); }
 }
+
+const attEstadosEnt = {};
+window.marcarEnt = function(id, estado, btn) {
+  const fila = btn.closest('.asistencia-fila');
+  fila.querySelectorAll('.att-btn').forEach(b => b.classList.remove('sel'));
+  btn.classList.add('sel');
+  attEstadosEnt[id] = estado;
+};
 
 async function guardarAsistenciaEntrenador() {
-  const grupo = document.getElementById('entrenadorGrupo').value;
+  const grupo = document.getElementById('entrenadorGrupo')?.value;
+  if (!grupo) return showToast('Selecciona un grupo', 'error');
   const fecha = new Date().toISOString().slice(0,10);
-  const registros = [];
-  document.querySelectorAll('#entrenadorAsistenciaLista .asistencia-fila').forEach(row => {
-    const select = row.querySelector('select');
-    const obs = row.querySelector('input').value;
-    registros.push({
-      id_atleta: select.dataset.id,
-      id_grupo: grupo,
+
+  const registros = Array.from(document.querySelectorAll('#entrenadorAsistenciaLista .asistencia-fila'))
+    .map(row => ({
+      id_atleta:   row.dataset.id,
+      id_grupo:    grupo,
       fecha,
-      estado: select.value,
-      observacion: obs
-    });
-  });
-  if (registros.length === 0) return;
+      estado:      attEstadosEnt[row.dataset.id] || 'ausente',
+      observacion: document.getElementById(`eobs-${row.dataset.id}`)?.value || ''
+    }));
+
+  if (!registros.length) return showToast('No hay atletas', 'error');
   try {
-    await fetchAPI('/asistencia', { method: 'POST', body: JSON.stringify({ registros }) });
-    showToast('Asistencia registrada');
-  } catch(e) { showToast('Error', true); }
+    await api('/asistencia', { method:'POST', body: JSON.stringify({ registros }) });
+    showToast('Asistencia registrada ✅', 'success');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
-// ==================== COMUNICADOS ====================
+/* ════════════════════════════════════════════════════════
+   PANEL COMUNICADOS
+════════════════════════════════════════════════════════ */
+let _todosLosComunicados = [];
+
 async function cargarComunicados() {
+  const container = document.getElementById('comunicadosLista');
+  if (!container) return;
+  container.innerHTML = '<div class="spinner"></div>';
   try {
-    const comunicados = await fetchAPI('/comunicados');
-    const container = document.getElementById('comunicadosLista');
-    container.innerHTML = comunicados.map(c => `
-      <div class="aviso-card ${c.prioridad}">
-        <h4>${c.titulo}</h4>
-        <p>${c.mensaje}</p>
-        <small>${new Date(c.fecha_publicacion).toLocaleString()} - ${c.destinatario || 'Todos'}</small>
-      </div>
-    `).join('');
-    document.querySelectorAll('.filter-chips .chip').forEach(chip => {
-      chip.onclick = () => {
-        document.querySelectorAll('.filter-chips .chip').forEach(c => c.classList.remove('active'));
-        chip.classList.add('active');
-        const filtro = chip.dataset.filter;
-        document.querySelectorAll('.aviso-card').forEach(card => {
-          if (filtro === 'todos') card.style.display = 'block';
-          else if (filtro === 'urgente') card.style.display = card.classList.contains('urgente') ? 'block' : 'none';
-        });
-      };
-    });
-  } catch(e) { console.error(e); }
+    _todosLosComunicados = await api('/comunicados');
+    renderComunicados(_todosLosComunicados);
+  } catch(e) {
+    container.innerHTML = `<div class="empty-state"><p>Error cargando comunicados.</p></div>`;
+  }
 }
 
-async function nuevoComunicado() {
-  if (currentUser.rol !== 'administracion') return showToast('Solo administración puede crear comunicados', true);
-  const titulo = prompt('Título del comunicado:');
-  if (!titulo) return;
-  const mensaje = prompt('Mensaje:');
-  if (!mensaje) return;
-  const prioridad = confirm('¿Marcar como urgente?') ? 'urgente' : 'normal';
+function renderComunicados(list) {
+  const container = document.getElementById('comunicadosLista');
+  if (!container) return;
+  if (!list.length) {
+    container.innerHTML = `<div class="empty-state"><span class="es-icon">📢</span><h3>Sin comunicados</h3><p>No hay avisos publicados aún.</p></div>`;
+    return;
+  }
+  container.innerHTML = list.map(c => `
+    <div class="aviso-card ${c.prioridad || 'normal'}">
+      <h4>
+        ${c.titulo}
+        ${badge(c.prioridad || 'normal')}
+      </h4>
+      <p>${c.mensaje || ''}</p>
+      <small>${new Date(c.fecha_publicacion).toLocaleString('es-DO')} · ${c.destinatario || 'Todo el club'}</small>
+    </div>
+  `).join('');
+}
+
+function filtrarComunicados(tipo) {
+  if (tipo === 'todos') return renderComunicados(_todosLosComunicados);
+  if (tipo === 'urgente') return renderComunicados(_todosLosComunicados.filter(c => c.prioridad === 'urgente'));
+}
+
+async function publicarComunicado() {
+  const titulo      = document.getElementById('comTitulo')?.value.trim();
+  const mensaje     = document.getElementById('comMensaje')?.value.trim();
+  const destinatario = document.getElementById('comDestinatario')?.value;
+  const prioridad   = document.getElementById('comPrioridad')?.value;
+
+  if (!titulo || !mensaje) return showToast('Completa título y mensaje', 'error');
   try {
-    await fetchAPI('/comunicados', { method: 'POST', body: JSON.stringify({ titulo, mensaje, destinatario: 'todo el club', prioridad }) });
-    showToast('Comunicado publicado');
+    await api('/comunicados', { method:'POST', body: JSON.stringify({ titulo, mensaje, destinatario, prioridad }) });
+    showToast('Comunicado publicado ✅', 'success');
+    cerrarModales();
     cargarComunicados();
-  } catch(e) { showToast('Error', true); }
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
-// ==================== DASHBOARD ADMIN ====================
-async function cargarDashboard() {
+/* ════════════════════════════════════════════════════════
+   PANEL MIS ATLETAS (tutor)
+════════════════════════════════════════════════════════ */
+async function cargarMisAtletas() {
+  if (!currentUser || currentUser.rol !== 'tutor') return;
+  const tbody = document.getElementById('misAtletasBody');
+  if (!tbody) return;
   try {
-    const stats = await fetchAPI('/estadisticas');
-    const kpiDiv = document.getElementById('kpiContainer');
-    kpiDiv.innerHTML = `
-      <div class="kpi-card"><h3>${stats.total_atletas}</h3><span>Atletas totales</span></div>
-      <div class="kpi-card"><h3>${stats.activos}</h3><span>Activos</span></div>
-      <div class="kpi-card"><h3>${stats.pagos_pendientes}</h3><span>Pagos pendientes</span></div>
-      <div class="kpi-card"><h3>${stats.pagos_aprobados}</h3><span>Pagos aprobados</span></div>
-    `;
-    const discData = await fetchAPI('/estadisticas/disciplinas');
-    const ctxBar = document.getElementById('disciplinasChart').getContext('2d');
-    const ctxPie = document.getElementById('pagosEstadoChart').getContext('2d');
-    if (charts.bar) charts.bar.destroy();
-    if (charts.pie) charts.pie.destroy();
-    charts.bar = new Chart(ctxBar, {
-      type: 'bar',
-      data: { labels: discData.map(d => d.nombre), datasets: [{ label: 'Atletas', data: discData.map(d => d.total), backgroundColor: '#2299e2' }] }
-    });
-    charts.pie = new Chart(ctxPie, {
-      type: 'pie',
-      data: { labels: ['Aprobados', 'Pendientes', 'Rechazados'], datasets: [{ data: [stats.pagos_aprobados, stats.pagos_pendientes, stats.pagos_rechazados], backgroundColor: ['#2ecc71', '#f1c40f', '#e74c3c'] }] }
-    });
-  } catch(e) { console.error(e); }
+    const atletas = await api('/atletas');
+    const misAtletas = atletas.filter(a => a.id_tutor === currentUser.id);
+    if (!misAtletas.length) {
+      tbody.innerHTML = `<tr><td colspan="5" class="table-empty"><span class="es-icon">👥</span><p>No tienes atletas registrados.</p></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = misAtletas.map(a => `
+      <tr>
+        <td><div class="td-primary">${a.nombre} ${a.apellido}</div></td>
+        <td>${a.disciplina || '—'}</td>
+        <td>${a.grupo || '—'}</td>
+        <td>${badge(a.estado)}</td>
+        <td>
+          <button class="btn-outline-small" onclick="verHistorialAtleta(${a.id_atleta})">📄 Historial</button>
+        </td>
+      </tr>
+    `).join('');
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="5" class="table-empty"><p>Error cargando atletas.</p></td></tr>`;
+  }
 }
 
-// ==================== EXPORTACIONES ====================
+window.verHistorialAtleta = async (id) => {
+  try {
+    const pagos = await api(`/pagos/${id}`);
+    const resumen = pagos.length
+      ? `${pagos.length} registros de pago encontrados.`
+      : 'Sin historial de pagos.';
+    showToast(resumen, 'info');
+  } catch(e) { showToast('Error cargando historial', 'error'); }
+};
+
+/* ════════════════════════════════════════════════════════
+   EXPORTACIONES
+════════════════════════════════════════════════════════ */
 async function exportarPDF() {
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF();
-  doc.text('Reporte Club Halcones', 14, 16);
-  const stats = await fetchAPI('/estadisticas');
-  doc.text(`Atletas activos: ${stats.activos}`, 14, 30);
-  doc.text(`Pagos pendientes: ${stats.pagos_pendientes}`, 14, 40);
-  const atletas = await fetchAPI('/atletas');
-  const tableData = atletas.map(a => [a.nombre, a.apellido, a.disciplina || '-', a.estado]);
-  doc.autoTable({ head: [['Nombre', 'Apellido', 'Disciplina', 'Estado']], body: tableData, startY: 50 });
-  doc.save('reporte_halcones.pdf');
+  const btn = document.getElementById('exportPDFBtn');
+  if (btn) btn.textContent = '⏳ Generando…';
+  try {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const stats   = await api('/estadisticas');
+    const atletas = await api('/atletas');
+    const pagos   = await api('/pagos');
+    const ahora   = new Date().toLocaleString('es-DO');
+
+    /* Encabezado */
+    doc.setFillColor(0,72,198);
+    doc.rect(0, 0, 210, 28, 'F');
+    doc.setTextColor(255,255,255);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(16);
+    doc.text('Club Deportivo y Cultural Halcones', 14, 12);
+    doc.setFontSize(10);
+    doc.setFont('helvetica','normal');
+    doc.text('Reporte Administrativo General', 14, 20);
+    doc.text(ahora, 140, 20);
+
+    /* Resumen */
+    doc.setTextColor(0,0,0);
+    doc.setFontSize(12);
+    doc.setFont('helvetica','bold');
+    doc.text('Resumen General', 14, 38);
+    doc.setFontSize(10);
+    doc.setFont('helvetica','normal');
+    doc.text(`Atletas activos:     ${stats.activos ?? 0}`, 14, 47);
+    doc.text(`Pagos aprobados:     ${stats.pagos_aprobados ?? 0}`, 14, 54);
+    doc.text(`Pagos pendientes:    ${stats.pagos_pendientes ?? 0}`, 14, 61);
+
+    /* Tabla atletas */
+    doc.autoTable({
+      startY: 72,
+      head: [['Nombre', 'Apellido', 'Disciplina', 'Estado']],
+      body: atletas.map(a => [a.nombre, a.apellido, a.disciplina || '—', a.estado]),
+      styles: { fontSize: 9, font: 'helvetica' },
+      headStyles: { fillColor: [0,72,198], textColor: 255 },
+      alternateRowStyles: { fillColor: [240,246,255] }
+    });
+
+    /* Tabla pagos */
+    const y2 = doc.lastAutoTable.finalY + 12;
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(12);
+    doc.text('Historial de Pagos', 14, y2);
+    doc.autoTable({
+      startY: y2 + 6,
+      head: [['Atleta', 'Tipo', 'Método', 'Monto RD$', 'Estado']],
+      body: pagos.map(p => [
+        `${p.nombre_atleta} ${p.apellido_atleta}`,
+        p.tipo_pago, p.metodo_pago,
+        Number(p.monto).toLocaleString(),
+        p.estado
+      ]),
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [0,72,198], textColor: 255 },
+    });
+
+    doc.save('reporte_halcones.pdf');
+    showToast('PDF generado ✅', 'success');
+  } catch(e) {
+    showToast('Error generando PDF: ' + e.message, 'error');
+  } finally {
+    if (btn) btn.textContent = '📄 Exportar PDF';
+  }
 }
 
 async function exportarExcel() {
-  const atletas = await fetchAPI('/atletas');
-  const pagos = await fetchAPI('/pagos');
-  const ws1 = XLSX.utils.json_to_sheet(atletas.map(a => ({ Nombre: a.nombre, Apellido: a.apellido, Disciplina: a.disciplina, Estado: a.estado })));
-  const ws2 = XLSX.utils.json_to_sheet(pagos.map(p => ({ Atleta: p.nombre_atleta, Monto: p.monto, Estado: p.estado, Fecha: p.fecha_pago })));
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws1, 'Atletas');
-  XLSX.utils.book_append_sheet(wb, ws2, 'Pagos');
-  XLSX.writeFile(wb, 'reporte_halcones.xlsx');
-}
-
-// ==================== MIS ATLETAS (TUTOR) ====================
-async function cargarMisAtletas() {
+  const btn = document.getElementById('exportExcelBtn');
+  if (btn) btn.textContent = '⏳ Generando…';
   try {
-    const atletas = await fetchAPI('/atletas');
-    const misAtletas = atletas.filter(a => a.id_tutor === currentUser.id);
-    const tbody = document.getElementById('misAtletasBody');
-    tbody.innerHTML = misAtletas.map(a => `
-      <tr>
-        <td>${a.nombre} ${a.apellido}</td>
-        <td>${a.disciplina}</td>
-        <td><span class="badge ${a.estado}">${a.estado}</span></td>
-        <td><button class="btn-outline-small" onclick="showToast('Historial en construcción')">Historial</button></td>
-      </tr>
-    `).join('');
-  } catch(e) { showToast('Error cargando tus atletas', true); }
+    const atletas = await api('/atletas');
+    const pagos   = await api('/pagos');
+
+    const wsAtletas = XLSX.utils.json_to_sheet(atletas.map(a => ({
+      Nombre:     a.nombre,
+      Apellido:   a.apellido,
+      Disciplina: a.disciplina || '—',
+      Grupo:      a.grupo || '—',
+      Estado:     a.estado,
+      Tutor:      a.tutor || '—',
+      Telefono:   a.telefono_tutor || '—'
+    })));
+
+    const wsPagos = XLSX.utils.json_to_sheet(pagos.map(p => ({
+      Atleta:     `${p.nombre_atleta} ${p.apellido_atleta}`,
+      Tipo:       p.tipo_pago,
+      Metodo:     p.metodo_pago,
+      Monto_RD:   p.monto,
+      Estado:     p.estado,
+      Fecha:      p.fecha_pago ? new Date(p.fecha_pago).toLocaleDateString('es-DO') : '—',
+      Motivo:     p.motivo_rechazo || ''
+    })));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, wsAtletas, 'Atletas');
+    XLSX.utils.book_append_sheet(wb, wsPagos,   'Pagos');
+    XLSX.writeFile(wb, 'reporte_halcones.xlsx');
+    showToast('Excel generado ✅', 'success');
+  } catch(e) {
+    showToast('Error generando Excel: ' + e.message, 'error');
+  } finally {
+    if (btn) btn.textContent = '📊 Exportar Excel';
+  }
 }
 
-// ==================== INICIALIZACIÓN GLOBAL ====================
+/* ════════════════════════════════════════════════════════
+   INICIALIZACIÓN GLOBAL
+════════════════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', () => {
   initRoleSelector();
-  const savedUser = sessionStorage.getItem('halcones_user');
-  if (savedUser) {
-    currentUser = JSON.parse(savedUser);
-    document.getElementById('loginModal').style.display = 'none';
+
+  const saved = sessionStorage.getItem('halcones_user');
+  if (saved) {
+    currentUser = JSON.parse(saved);
+    document.getElementById('loginModal').classList.remove('open');
     document.getElementById('app').classList.remove('hidden');
-    document.getElementById('userNameDisplay').innerText = currentUser.nombre;
+    document.getElementById('userNameDisplay').textContent = currentUser.nombre;
+    document.getElementById('userAvatar').textContent     = initials(currentUser.nombre);
     inicializarPestanas();
     cargarDatosIniciales();
   } else {

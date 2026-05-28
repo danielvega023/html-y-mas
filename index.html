@@ -3,222 +3,479 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Club Halcones | Gestión Deportiva</title>
+  <title>Club Halcones | Sistema de Gestión</title>
   <link rel="icon" href="img/image-removebg-preview.ico" type="image/png">
-  <!-- Google Fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <!-- jsPDF y AutoTable (para PDF) -->
+  <!-- jsPDF + AutoTable -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-  <!-- SheetJS (para Excel) -->
+  <!-- SheetJS -->
   <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+  <!-- Estilos -->
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
 
-  <!-- NOTIFICACIONES TOAST -->
-  <div id="toast" class="toast hidden"></div>
+<!-- ─── TOAST ──────────────────────────────────────────── -->
+<div id="toast" class="toast"></div>
 
-  <!-- LOGIN MODAL (único punto de entrada) -->
-  <div id="loginModal" class="modal">
-    <div class="modal-content login-card">
-      <div class="login-header">
-        <div class="logo-icon"><img src="img/image-removebg-preview.ico" alt=""></div>
-        <h2>CLUB HALCONES</h2>
-        <p>Sistema de Gestión · Temporada 2026</p>
+
+<!-- ═══════════════════════════════════════════════════════
+     LOGIN MODAL
+═══════════════════════════════════════════════════════ -->
+<div id="loginModal" class="modal open">
+  <div class="modal-content login-card">
+    <div class="login-header">
+      <div class="logo-icon">
+        <img src="img/image-removebg-preview.ico" alt="Halcones" onerror="this.style.display='none';this.parentElement.textContent='🦅'">
       </div>
-      <div class="role-selector">
-        <button class="role-btn active" data-role="administracion">👩‍💼 COORDINADORA</button>
-        <button class="role-btn" data-role="entrenador">🏋️ ENTRENADOR</button>
-        <button class="role-btn" data-role="tutor">👨‍👧 PADRE/TUTOR</button>
-      </div>
-      <input type="email" id="loginEmail" class="input-field" placeholder="correo@ejemplo.com">
-      <input type="password" id="loginPassword" class="input-field" placeholder="Contraseña">
-      <button id="loginBtn" class="btn-primary full-width">INGRESAR</button>
-      <p class="login-footer">¿Olvidaste tu contraseña? <a href="#">Recuperar acceso</a></p>
+      <h2>CLUB HALCONES</h2>
+      <p>Sistema de Gestión · Temporada 2026</p>
     </div>
+
+    <!-- Selección de rol -->
+    <div class="role-selector">
+      <button class="role-btn active" data-role="administracion">👩‍💼<br>COORDINADORA</button>
+      <button class="role-btn" data-role="entrenador">🏋️<br>ENTRENADOR</button>
+      <button class="role-btn" data-role="tutor">👨‍👧<br>PADRE/TUTOR</button>
+    </div>
+
+    <!-- Campos -->
+    <div class="login-inputs">
+      <div>
+        <label class="login-label">Correo electrónico</label>
+        <input type="email" id="loginEmail" class="input-field" placeholder="correo@ejemplo.com">
+      </div>
+      <div>
+        <label class="login-label">Contraseña</label>
+        <input type="password" id="loginPassword" class="input-field" placeholder="••••••••">
+      </div>
+    </div>
+
+    <button id="loginBtn" class="btn-primary full-width">INGRESAR AL SISTEMA</button>
+    <div id="loginError" class="login-error"></div>
+    <p class="login-footer">¿Olvidaste tu contraseña? <a href="#">Recuperar acceso</a></p>
   </div>
+</div>
 
-  <!-- APLICACIÓN PRINCIPAL (oculta hasta login exitoso) -->
-  <div id="app" class="app-container hidden">
 
-    <!-- BARRA DE NAVEGACIÓN SUPERIOR -->
-    <nav class="navbar">
-      <div class="logo-area">
-        <span class="logo-icon">🦅</span>
-        <span class="logo-text">HALCONES</span>
-      </div>
-      <div class="nav-tabs" id="navTabs">
-        <!-- Las pestañas se generarán dinámicamente según rol -->
-      </div>
-      <div class="user-menu">
-        <span id="userNameDisplay" class="user-name"></span>
-        <button id="logoutBtn" class="btn-outline-small">Cerrar sesión</button>
-      </div>
-    </nav>
+<!-- ═══════════════════════════════════════════════════════
+     APLICACIÓN PRINCIPAL
+═══════════════════════════════════════════════════════ -->
+<div id="app" class="app-container hidden">
 
-    <!-- CONTENEDOR DE PANELES (cada sección se muestra/oculta) -->
-    <main id="mainContent" class="main-content">
-      <!-- Panel INICIO (dashboard público, con estadísticas generales) -->
-      <section id="panel-inicio" class="panel active">
-        <div class="hero">
-          <h1>Club Deportivo y Cultural <span>Halcones</span></h1>
-          <p>Gestión integral de atletas, pagos, asistencia y comunicados</p>
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <div class="logo-area">
+      <span class="logo-icon">🦅</span>
+      <span class="logo-text">HAL<span>CONES</span></span>
+    </div>
+    <!-- Tabs dinámicos por rol -->
+    <div class="nav-tabs" id="navTabs"></div>
+    <!-- Usuario -->
+    <div class="user-menu">
+      <div class="user-avatar" id="userAvatar">?</div>
+      <span class="user-name" id="userNameDisplay"></span>
+      <button id="logoutBtn" class="btn-outline-small">Salir</button>
+    </div>
+  </nav>
+
+  <!-- CONTENIDO PRINCIPAL -->
+  <main id="mainContent" class="main-content">
+
+    <!-- ── INICIO ──────────────────────────────────────── -->
+    <section id="panel-inicio" class="panel active">
+      <div class="hero">
+        <h1>Club Deportivo y Cultural <span>Halcones</span></h1>
+        <p>Gestión integral de atletas, pagos, asistencia y comunicados · Politécnico Santa Luisa de Marillac</p>
+      </div>
+      <div class="stats-row" id="statsRow">
+        <div class="stat-card"><h3 id="totalAtletas">—</h3><span>Atletas activos</span></div>
+        <div class="stat-card"><h3 id="totalDisciplinas">—</h3><span>Disciplinas</span></div>
+        <div class="stat-card"><h3 id="pagosPendientes">—</h3><span>Pagos pendientes</span></div>
+        <div class="stat-card"><h3 id="comunicadosRecientes">—</h3><span>Comunicados</span></div>
+      </div>
+      <div class="section-title"><h2>📢 Últimos comunicados</h2></div>
+      <div id="ultimosComunicados" class="noticias-grid">
+        <div class="spinner"></div>
+      </div>
+    </section>
+
+
+    <!-- ── DASHBOARD (solo admin) ─────────────────────── -->
+    <section id="panel-dashboard" class="panel">
+      <div class="section-header">
+        <h2>📊 Dashboard Administrativo</h2>
+        <div class="export-buttons">
+          <button id="exportPDFBtn" class="btn-secondary">📄 Exportar PDF</button>
+          <button id="exportExcelBtn" class="btn-secondary">📊 Exportar Excel</button>
         </div>
-        <div class="stats-row" id="statsRow">
-          <div class="stat-card"><h3 id="totalAtletas">0</h3><span>Atletas activos</span></div>
-          <div class="stat-card"><h3 id="totalDisciplinas">0</h3><span>Disciplinas</span></div>
-          <div class="stat-card"><h3 id="pagosPendientes">0</h3><span>Pagos pendientes</span></div>
-          <div class="stat-card"><h3 id="comunicadosRecientes">0</h3><span>Comunicados</span></div>
-        </div>
-        <div class="section-title"><h2>Últimos comunicados</h2></div>
-        <div id="ultimosComunicados" class="noticias-grid"></div>
-      </section>
+      </div>
 
-      <!-- Panel DASHBOARD ADMIN (solo visible para administración) -->
-      <section id="panel-dashboard" class="panel">
-        <div class="section-header">
-          <h2>📊 Dashboard Administrativo</h2>
-          <div class="export-buttons">
-            <button id="exportPDFBtn" class="btn-secondary">📄 Exportar PDF</button>
-            <button id="exportExcelBtn" class="btn-secondary">📊 Exportar Excel</button>
+      <!-- KPIs -->
+      <div class="kpi-row" id="kpiContainer">
+        <div class="spinner"></div>
+      </div>
+
+      <!-- Gráficos: barra + pastel -->
+      <div class="charts-row">
+        <div class="chart-card">
+          <h4>📊 Atletas por <span>Disciplina</span></h4>
+          <div class="chart-canvas-wrap">
+            <canvas id="disciplinasChart"></canvas>
           </div>
         </div>
-        <div class="kpi-row" id="kpiContainer"></div>
-        <div class="charts-row">
-          <div class="chart-card"><canvas id="disciplinasChart"></canvas></div>
-          <div class="chart-card"><canvas id="pagosEstadoChart"></canvas></div>
+        <div class="chart-card">
+          <h4>🥧 Estado de <span>Pagos</span></h4>
+          <div class="chart-canvas-wrap">
+            <canvas id="pagosEstadoChart"></canvas>
+          </div>
         </div>
-      </section>
+      </div>
 
-      <!-- Panel GESTIÓN ATLETAS (solo administración) -->
-      <section id="panel-atletas" class="panel">
-        <div class="section-header">
-          <h2>👥 Gestión de Atletas</h2>
-          <button id="newAtletaBtn" class="btn-primary">➕ Nuevo Atleta</button>
+      <!-- Gráfico de línea: pagos por mes -->
+      <div class="charts-row" style="margin-top:18px;">
+        <div class="chart-card chart-full">
+          <h4>📈 Pagos Aprobados por <span>Mes</span></h4>
+          <div class="chart-canvas-wrap" style="max-height:220px;">
+            <canvas id="pagosMesChart"></canvas>
+          </div>
         </div>
-        <div class="filters-bar">
-          <input type="text" id="searchAtleta" placeholder="Buscar por nombre..." class="input-field">
-          <select id="filterDisciplina" class="input-field"><option value="">Todas las disciplinas</option></select>
-          <select id="filterEstado" class="input-field"><option value="">Todos los estados</option><option value="activo">Activo</option><option value="inactivo">Inactivo</option><option value="pendiente">Pendiente</option></select>
-        </div>
-        <div class="table-container">
-          <table id="atletasTable">
-            <thead><tr><th>Atleta</th><th>Disciplina</th><th>Tutor</th><th>Estado</th><th>Acciones</th></tr></thead>
-            <tbody id="atletasTableBody"></tbody>
-          </table>
-        </div>
-      </section>
+      </div>
 
-      <!-- Panel PAGOS -->
-      <section id="panel-pagos" class="panel">
-        <div class="section-header">
-          <h2>💰 Gestión de Pagos</h2>
-          <button id="pagoEfectivoBtn" class="btn-primary">💵 Registrar pago en efectivo</button>
-        </div>
-        <div class="pagos-tabs">
-          <button class="tab-btn active" data-tab="pendientes">Pendientes</button>
-          <button class="tab-btn" data-tab="historial">Historial</button>
-          <button class="tab-btn" data-tab="subir">Subir comprobante</button>
-        </div>
-        <div id="pagosContent" class="pagos-content"></div>
-      </section>
+      <!-- Tabla de atletas con morosidad (3+ meses) -->
+      <div class="section-header" style="margin-top:28px;">
+        <h2>⚠️ Alertas de <span class="text-gold">Morosidad</span></h2>
+      </div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Atleta</th>
+              <th>Disciplina</th>
+              <th>Tutor</th>
+              <th>Teléfono</th>
+              <th>Meses sin pagar</th>
+            </tr>
+          </thead>
+          <tbody id="morosidadBody">
+            <tr><td colspan="5" class="table-empty"><span class="es-icon">✅</span><p>Sin alertas de morosidad</p></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
 
-      <!-- Panel ASISTENCIA -->
-      <section id="panel-asistencia" class="panel">
-        <div class="section-header">
-          <h2>📋 Control de Asistencia</h2>
-        </div>
-        <div class="asistencia-filters">
+
+    <!-- ── GESTIÓN ATLETAS (solo admin) ──────────────── -->
+    <section id="panel-atletas" class="panel">
+      <div class="section-header">
+        <h2>👥 Gestión de Atletas</h2>
+        <button id="newAtletaBtn" class="btn-primary">➕ Nuevo Atleta</button>
+      </div>
+      <div class="filters-bar">
+        <input type="text" id="searchAtleta" placeholder="🔍 Buscar por nombre…" class="input-field">
+        <select id="filterDisciplina" class="input-field" style="max-width:200px;">
+          <option value="">Todas las disciplinas</option>
+        </select>
+        <select id="filterEstado" class="input-field" style="max-width:160px;">
+          <option value="">Todos los estados</option>
+          <option value="activo">Activo</option>
+          <option value="inactivo">Inactivo</option>
+          <option value="pendiente">Pendiente</option>
+        </select>
+      </div>
+      <div class="table-container">
+        <table id="atletasTable">
+          <thead>
+            <tr>
+              <th>Atleta</th>
+              <th>Disciplina</th>
+              <th>Grupo</th>
+              <th>Tutor</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="atletasTableBody">
+            <tr><td colspan="6"><div class="spinner"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+
+    <!-- ── PAGOS ──────────────────────────────────────── -->
+    <section id="panel-pagos" class="panel">
+      <div class="section-header">
+        <h2>💰 Gestión de Pagos</h2>
+        <!-- Solo visible para admin (JS lo controla) -->
+        <button id="pagoEfectivoBtn" class="btn-gold hidden">💵 Registrar Efectivo</button>
+      </div>
+
+      <div class="pagos-tabs">
+        <button class="tab-btn active" data-tab="pendientes">Pendientes</button>
+        <button class="tab-btn" data-tab="historial">Historial</button>
+        <button class="tab-btn" data-tab="subir">Subir comprobante</button>
+      </div>
+
+      <div id="pagosContent">
+        <div class="spinner"></div>
+      </div>
+    </section>
+
+
+    <!-- ── ASISTENCIA ─────────────────────────────────── -->
+    <section id="panel-asistencia" class="panel">
+      <div class="section-header">
+        <h2>📋 Control de Asistencia</h2>
+        <button id="guardarAsistenciaBtn" class="btn-primary">💾 Guardar Asistencia</button>
+      </div>
+
+      <div class="asistencia-filters">
+        <div style="flex:1;min-width:200px;">
+          <label class="login-label" style="margin-bottom:5px;">Grupo</label>
           <select id="asistenciaGrupo" class="input-field"></select>
-          <input type="date" id="asistenciaFecha" class="input-field">
-          <button id="guardarAsistenciaBtn" class="btn-primary">Guardar asistencia</button>
         </div>
-        <div id="asistenciaLista" class="asistencia-lista"></div>
-      </section>
-
-      <!-- Panel COMUNICADOS -->
-      <section id="panel-comunicados" class="panel">
-        <div class="section-header">
-          <h2>📢 Comunicados del Club</h2>
-          <button id="nuevoComunicadoBtn" class="btn-primary">+ Nuevo aviso</button>
+        <div>
+          <label class="login-label" style="margin-bottom:5px;">Fecha</label>
+          <input type="date" id="asistenciaFecha" class="input-field" style="min-width:160px;">
         </div>
-        <div class="filter-chips">
-          <button class="chip active" data-filter="todos">Todos</button>
-          <button class="chip" data-filter="urgente">Urgentes</button>
+      </div>
+
+      <!-- Resumen en tiempo real -->
+      <div class="att-summary" id="attSummary">
+        <div class="att-sum-item"><div class="att-sum-num presentes" id="sum-presentes">0</div><div class="att-sum-label">Presentes</div></div>
+        <div class="att-sum-item"><div class="att-sum-num ausentes"  id="sum-ausentes">0</div><div class="att-sum-label">Ausentes</div></div>
+        <div class="att-sum-item"><div class="att-sum-num tardanzas" id="sum-tardanzas">0</div><div class="att-sum-label">Tardanzas</div></div>
+        <div class="att-sum-item"><div class="att-sum-num sin-marcar" id="sum-sin">0</div><div class="att-sum-label">Sin marcar</div></div>
+      </div>
+
+      <div id="asistenciaLista" class="asistencia-lista">
+        <div class="empty-state">
+          <span class="es-icon">📋</span>
+          <h3>Selecciona un grupo</h3>
+          <p>Elige un grupo para ver la lista de atletas.</p>
         </div>
-        <div id="comunicadosLista" class="comunicados-grid"></div>
-      </section>
+      </div>
+    </section>
 
-      <!-- Panel MIS ATLETAS (tutor) -->
-      <section id="panel-mis-atletas" class="panel">
-        <div class="section-header"><h2>👨‍👧 Mis Atletas</h2></div>
-        <div class="table-container">
-          <table><thead><tr><th>Atleta</th><th>Disciplina</th><th>Estado</th><th>Acciones</th></tr></thead><tbody id="misAtletasBody"></tbody></table>
+
+    <!-- ── COMUNICADOS ────────────────────────────────── -->
+    <section id="panel-comunicados" class="panel">
+      <div class="section-header">
+        <h2>📢 Comunicados del Club</h2>
+        <button id="nuevoComunicadoBtn" class="btn-primary hidden">+ Nuevo aviso</button>
+      </div>
+
+      <div class="filter-chips">
+        <button class="chip active" data-filter="todos">Todos</button>
+        <button class="chip urgente-chip" data-filter="urgente">🚨 Urgentes</button>
+      </div>
+
+      <div id="comunicadosLista" class="comunicados-grid">
+        <div class="spinner"></div>
+      </div>
+    </section>
+
+
+    <!-- ── MIS ATLETAS (tutor) ────────────────────────── -->
+    <section id="panel-mis-atletas" class="panel">
+      <div class="section-header">
+        <h2>👨‍👧 Mis Atletas</h2>
+      </div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr><th>Atleta</th><th>Disciplina</th><th>Grupo</th><th>Estado</th><th>Acciones</th></tr>
+          </thead>
+          <tbody id="misAtletasBody">
+            <tr><td colspan="5"><div class="spinner"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+
+    <!-- ── MIS GRUPOS (entrenador) ────────────────────── -->
+    <section id="panel-mis-grupos" class="panel">
+      <div class="section-header">
+        <h2>🏋️ Mis Grupos</h2>
+        <button id="guardarAsistenciaEntrenadorBtn" class="btn-primary">💾 Guardar Asistencia</button>
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <label class="login-label" style="margin-bottom:5px;">Grupo asignado</label>
+        <select id="entrenadorGrupo" class="input-field" style="max-width:320px;"></select>
+      </div>
+
+      <div id="entrenadorAsistenciaLista" class="asistencia-lista">
+        <div class="empty-state">
+          <span class="es-icon">🏋️</span>
+          <h3>Sin grupo seleccionado</h3>
+          <p>Selecciona un grupo para ver tus atletas.</p>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <!-- Panel MIS GRUPOS (entrenador) -->
-      <section id="panel-mis-grupos" class="panel">
-        <div class="section-header"><h2>🏋️ Mis Grupos</h2></div>
-        <select id="entrenadorGrupo" class="input-field"></select>
-        <div id="entrenadorAsistenciaLista" class="asistencia-lista"></div>
-        <button id="guardarAsistenciaEntrenadorBtn" class="btn-primary">Guardar asistencia</button>
-      </section>
-    </main>
-  </div>
+  </main>
+</div><!-- /app -->
 
-  <!-- MODAL para formulario de atleta (crear/editar) -->
-  <div id="atletaModal" class="modal">
-    <div class="modal-content">
-      <h3 id="atletaModalTitle">Nuevo Atleta</h3>
-      <input type="hidden" id="atletaId">
-      <input type="text" id="atletaNombre" placeholder="Nombre" class="input-field">
-      <input type="text" id="atletaApellido" placeholder="Apellido" class="input-field">
-      <input type="date" id="atletaFechaNac" class="input-field">
-      <select id="atletaDisciplina" class="input-field"></select>
+
+<!-- ═══════════════════════════════════════════════════════
+     MODALES
+═══════════════════════════════════════════════════════ -->
+
+<!-- Modal: Nuevo / Editar Atleta -->
+<div id="atletaModal" class="modal">
+  <div class="modal-content">
+    <h3 id="atletaModalTitle">➕ Nuevo Atleta</h3>
+    <input type="hidden" id="atletaId">
+
+    <p class="form-divider">Datos del atleta</p>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Nombre</label>
+        <input type="text" id="atletaNombre" placeholder="Nombre" class="input-field">
+      </div>
+      <div class="form-group">
+        <label>Apellido</label>
+        <input type="text" id="atletaApellido" placeholder="Apellido" class="input-field">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Fecha de nacimiento</label>
+        <input type="date" id="atletaFechaNac" class="input-field">
+      </div>
+      <div class="form-group">
+        <label>Disciplina</label>
+        <select id="atletaDisciplina" class="input-field"></select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Grupo</label>
       <select id="atletaGrupo" class="input-field"></select>
-      <input type="text" id="atletaTutorNombre" placeholder="Nombre del tutor" class="input-field">
-      <input type="tel" id="atletaTutorTelefono" placeholder="Teléfono" class="input-field">
-      <input type="email" id="atletaTutorEmail" placeholder="Email del tutor" class="input-field">
-      <div class="modal-buttons">
-        <button id="saveAtletaBtn" class="btn-primary">Guardar</button>
-        <button class="btn-secondary close-modal">Cancelar</button>
+    </div>
+
+    <p class="form-divider">Datos del tutor</p>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Nombre del tutor</label>
+        <input type="text" id="atletaTutorNombre" placeholder="Nombre completo" class="input-field">
+      </div>
+      <div class="form-group">
+        <label>Teléfono</label>
+        <input type="tel" id="atletaTutorTelefono" placeholder="+1 809 000 0000" class="input-field">
       </div>
     </div>
-  </div>
+    <div class="form-group">
+      <label>Correo del tutor</label>
+      <input type="email" id="atletaTutorEmail" placeholder="correo@ejemplo.com" class="input-field">
+    </div>
 
-  <!-- MODAL para subir comprobante -->
-  <div id="comprobanteModal" class="modal">
-    <div class="modal-content">
-      <h3>Subir comprobante de transferencia</h3>
-      <select id="compAtleta" class="input-field"></select>
-      <select id="compTipo" class="input-field"><option value="mensualidad">Mensualidad</option><option value="reinscripcion">Reinscripción</option></select>
-      <input type="number" id="compMonto" placeholder="Monto en RD$" class="input-field">
-      <input type="file" id="compArchivo" accept="image/*,application/pdf" class="input-field">
-      <div class="modal-buttons">
-        <button id="subirComprobanteBtn" class="btn-primary">Enviar</button>
-        <button class="btn-secondary close-modal">Cancelar</button>
-      </div>
+    <div class="modal-buttons">
+      <button class="btn-secondary close-modal">Cancelar</button>
+      <button id="saveAtletaBtn" class="btn-primary">Guardar atleta</button>
     </div>
   </div>
+</div>
 
-  <!-- MODAL para pago en efectivo -->
-  <div id="efectivoModal" class="modal">
-    <div class="modal-content">
-      <h3>Registrar pago en efectivo</h3>
+
+<!-- Modal: Pago en efectivo -->
+<div id="efectivoModal" class="modal">
+  <div class="modal-content">
+    <h3>💵 Registrar Pago en Efectivo</h3>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:18px;">
+      Este pago lo registra la administración. El estado se marcará como <strong style="color:var(--success)">Aprobado</strong> automáticamente.
+    </p>
+    <div class="form-group">
+      <label>Atleta</label>
       <select id="efectivoAtleta" class="input-field"></select>
-      <select id="efectivoTipo" class="input-field"><option value="mensualidad">Mensualidad</option><option value="reinscripcion">Reinscripción</option></select>
-      <input type="number" id="efectivoMonto" placeholder="Monto" class="input-field">
-      <div class="modal-buttons">
-        <button id="guardarEfectivoBtn" class="btn-primary">Registrar pago</button>
-        <button class="btn-secondary close-modal">Cancelar</button>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Tipo de pago</label>
+        <select id="efectivoTipo" class="input-field">
+          <option value="mensualidad">Mensualidad</option>
+          <option value="reinscripcion">Reinscripción anual</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Monto (RD$)</label>
+        <input type="number" id="efectivoMonto" placeholder="Ej: 1500" class="input-field">
       </div>
     </div>
+    <div class="modal-buttons">
+      <button class="btn-secondary close-modal">Cancelar</button>
+      <button id="guardarEfectivoBtn" class="btn-gold">Registrar pago</button>
+    </div>
   </div>
+</div>
 
-  <script src="js/app.js"></script>
+
+<!-- Modal: Aprobar/Rechazar pago -->
+<div id="estadoPagoModal" class="modal">
+  <div class="modal-content">
+    <h3 id="estadoPagoTitle">Aprobar Pago</h3>
+    <input type="hidden" id="estadoPagoId">
+    <input type="hidden" id="estadoPagoAccion">
+
+    <p id="estadoPagoDesc" style="font-size:13px;color:var(--text-muted);margin-bottom:16px;"></p>
+
+    <!-- Campo de motivo (solo para rechazo) -->
+    <div id="motivoWrap" class="motivo-rechazo-wrap hidden">
+      <label>Motivo del rechazo (obligatorio)</label>
+      <textarea id="motivoRechazo" class="input-field" rows="3" placeholder="Describe el motivo…" style="resize:vertical;"></textarea>
+    </div>
+
+    <div class="modal-buttons">
+      <button class="btn-secondary close-modal">Cancelar</button>
+      <button id="confirmarEstadoPagoBtn" class="btn-primary">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Modal: Comunicado nuevo -->
+<div id="comunicadoModal" class="modal">
+  <div class="modal-content">
+    <h3>📢 Nuevo Comunicado</h3>
+    <div class="form-group">
+      <label>Título</label>
+      <input type="text" id="comTitulo" class="input-field" placeholder="Ej: Cambio de horario">
+    </div>
+    <div class="form-group">
+      <label>Mensaje</label>
+      <textarea id="comMensaje" class="input-field" rows="4" placeholder="Escribe el comunicado…" style="resize:vertical;"></textarea>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Destinatario</label>
+        <select id="comDestinatario" class="input-field">
+          <option value="todo el club">Todo el club</option>
+          <option value="disciplina">Una disciplina</option>
+          <option value="grupo">Un grupo</option>
+          <option value="individual">Un atleta/tutor</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Prioridad</label>
+        <select id="comPrioridad" class="input-field">
+          <option value="normal">Normal</option>
+          <option value="urgente">Urgente 🚨</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-buttons">
+      <button class="btn-secondary close-modal">Cancelar</button>
+      <button id="guardarComunicadoBtn" class="btn-primary">Publicar</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Script -->
+<script src="js/app.js"></script>
 </body>
 </html>
