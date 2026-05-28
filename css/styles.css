@@ -1182,3 +1182,97 @@ tbody tr:last-child td { border-bottom: none; }
   .hero { padding: 24px 20px; }
   .hero::before { display: none; }
 }
+/* ════════════════════════════════════════════════════════
+   REGISTRO — AVISO EN MODAL LOGIN
+════════════════════════════════════════════════════════ */
+.register-notice {
+  background: rgba(0,115,255,.1);
+  border: 1px solid rgba(0,115,255,.25);
+  border-radius: var(--r-md);
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 18px;
+  line-height: 1.5;
+}
+
+/* ════════════════════════════════════════════════════════
+   COMUNICADOS — BOTÓN BORRAR
+════════════════════════════════════════════════════════ */
+.aviso-card h4 {
+  align-items: center;
+}
+.aviso-delete-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 3px 8px !important;
+  font-size: 11px !important;
+  opacity: 0.6;
+  transition: opacity var(--t-fast);
+}
+.aviso-card:hover .aviso-delete-btn { opacity: 1; }
+
+/* ════════════════════════════════════════════════════════
+   ASISTENCIA — INFO BOX
+════════════════════════════════════════════════════════ */
+.asistencia-info-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--r-md);
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.asistencia-info-disc  { color: var(--blue-electric); font-weight: 600; }
+.asistencia-info-grupo { color: var(--gold); font-weight: 600; }
+.asistencia-info-fecha { color: var(--text-muted); }
+.asistencia-info-sep   { color: var(--text-dim); }
+
+/* ════════════════════════════════════════════════════════
+   ENTRENADOR — INFO DEL GRUPO
+════════════════════════════════════════════════════════ */
+.grupo-info-card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--r-lg);
+  padding: 16px 20px;
+  margin-bottom: 18px;
+}
+.grupo-info-row {
+  display: flex;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+.grupo-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.grupo-info-label {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.grupo-info-val {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* ════════════════════════════════════════════════════════
+   NAVBAR LOGO — TAMAÑO AJUSTADO
+════════════════════════════════════════════════════════ */
+.logo-area .logo-icon img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  display: block;
+}

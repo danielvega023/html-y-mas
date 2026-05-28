@@ -34,28 +34,69 @@
       <p>Sistema de Gestión · Temporada 2026</p>
     </div>
 
-    <!-- Selección de rol -->
-    <div class="role-selector">
-      <button class="role-btn active" data-role="administracion">👩‍💼<br>COORDINADORA</button>
-      <button class="role-btn" data-role="entrenador">🏋️<br>ENTRENADOR</button>
-      <button class="role-btn" data-role="tutor">👨‍👧<br>PADRE/TUTOR</button>
+    <!-- Vista: Login o Registro -->
+    <div id="loginView">
+      <!-- Selección de rol -->
+      <div class="role-selector">
+        <button class="role-btn active" data-role="administracion">👩‍💼<br>COORDINADORA</button>
+        <button class="role-btn" data-role="entrenador">🏋️<br>ENTRENADOR</button>
+        <button class="role-btn" data-role="tutor">👨‍👧<br>PADRE/TUTOR</button>
+      </div>
+
+      <!-- Campos -->
+      <div class="login-inputs">
+        <div>
+          <label class="login-label">Correo electrónico</label>
+          <input type="email" id="loginEmail" class="input-field" placeholder="correo@ejemplo.com">
+        </div>
+        <div>
+          <label class="login-label">Contraseña</label>
+          <input type="password" id="loginPassword" class="input-field" placeholder="••••••••">
+        </div>
+      </div>
+
+      <button id="loginBtn" class="btn-primary full-width">INGRESAR AL SISTEMA</button>
+      <div id="loginError" class="login-error"></div>
+      <p class="login-footer">
+        ¿No tienes cuenta? <a href="#" id="showRegisterLink">Solicitar registro</a>
+      </p>
     </div>
 
-    <!-- Campos -->
-    <div class="login-inputs">
-      <div>
-        <label class="login-label">Correo electrónico</label>
-        <input type="email" id="loginEmail" class="input-field" placeholder="correo@ejemplo.com">
+    <!-- Vista: Registro -->
+    <div id="registerView" class="hidden">
+      <p class="register-notice">
+        📋 Tu solicitud será revisada por un administrador antes de activarse.
+      </p>
+      <div class="login-inputs">
+        <div>
+          <label class="login-label">Nombre completo</label>
+          <input type="text" id="regNombre" class="input-field" placeholder="Tu nombre completo">
+        </div>
+        <div>
+          <label class="login-label">Correo electrónico</label>
+          <input type="email" id="regEmail" class="input-field" placeholder="correo@ejemplo.com">
+        </div>
+        <div>
+          <label class="login-label">Contraseña</label>
+          <input type="password" id="regPassword" class="input-field" placeholder="Mínimo 6 caracteres">
+        </div>
+        <div>
+          <label class="login-label">Tipo de cuenta</label>
+          <select id="regRol" class="input-field">
+            <option value="tutor">Padre / Tutor</option>
+          </select>
+        </div>
+        <div>
+          <label class="login-label">Teléfono (opcional)</label>
+          <input type="tel" id="regTelefono" class="input-field" placeholder="+1 809 000 0000">
+        </div>
       </div>
-      <div>
-        <label class="login-label">Contraseña</label>
-        <input type="password" id="loginPassword" class="input-field" placeholder="••••••••">
-      </div>
+      <button id="registerBtn" class="btn-primary full-width">ENVIAR SOLICITUD</button>
+      <div id="registerError" class="login-error"></div>
+      <p class="login-footer">
+        ¿Ya tienes cuenta? <a href="#" id="showLoginLink">Iniciar sesión</a>
+      </p>
     </div>
-
-    <button id="loginBtn" class="btn-primary full-width">INGRESAR AL SISTEMA</button>
-    <div id="loginError" class="login-error"></div>
-    <p class="login-footer">¿Olvidaste tu contraseña? <a href="#">Recuperar acceso</a></p>
   </div>
 </div>
 
@@ -68,7 +109,7 @@
   <!-- NAVBAR -->
   <nav class="navbar">
     <div class="logo-area">
-      <span class="logo-icon"><img src="img/image-removebg-preview.ico" alt=""></span>
+      <span class="logo-icon"><img src="img/image-removebg-preview.ico" alt="" style="width:26px;height:26px;object-fit:contain;"></span>
       <span class="logo-text">HALCONES</span>
     </div>
     <!-- Tabs dinámicos por rol -->
@@ -164,6 +205,29 @@
           </tbody>
         </table>
       </div>
+
+      <!-- ── SOLICITUDES DE REGISTRO (solo admin) ───── -->
+      <div class="section-header" style="margin-top:28px;">
+        <h2>🆕 Solicitudes de <span class="text-gold">Registro</span></h2>
+        <span id="solicitudesBadge" class="badge pendiente hidden">0 pendientes</span>
+      </div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Correo</th>
+              <th>Rol</th>
+              <th>Teléfono</th>
+              <th>Fecha</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="solicitudesBody">
+            <tr><td colspan="6" class="table-empty"><span class="es-icon">✅</span><p>Sin solicitudes pendientes</p></td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
 
@@ -205,6 +269,36 @@
     </section>
 
 
+    <!-- ── GESTIÓN GRUPOS (solo admin) ───────────────── -->
+    <section id="panel-grupos" class="panel">
+      <div class="section-header">
+        <h2>🗂️ Gestión de Grupos</h2>
+        <button id="newGrupoBtn" class="btn-primary">➕ Nuevo Grupo</button>
+      </div>
+      <div class="filters-bar">
+        <select id="filterGrupoDisciplina" class="input-field" style="max-width:220px;">
+          <option value="">Todas las disciplinas</option>
+        </select>
+      </div>
+      <div class="table-container">
+        <table id="gruposTable">
+          <thead>
+            <tr>
+              <th>Nombre del grupo</th>
+              <th>Disciplina</th>
+              <th>Entrenador asignado</th>
+              <th>Atletas</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="gruposTableBody">
+            <tr><td colspan="5"><div class="spinner"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+
     <!-- ── PAGOS ──────────────────────────────────────── -->
     <section id="panel-pagos" class="panel">
       <div class="section-header">
@@ -234,6 +328,10 @@
 
       <div class="asistencia-filters">
         <div style="flex:1;min-width:200px;">
+          <label class="login-label" style="margin-bottom:5px;">Disciplina</label>
+          <select id="asistenciaDisciplinaFilter" class="input-field"></select>
+        </div>
+        <div style="flex:1;min-width:200px;">
           <label class="login-label" style="margin-bottom:5px;">Grupo</label>
           <select id="asistenciaGrupo" class="input-field"></select>
         </div>
@@ -251,11 +349,13 @@
         <div class="att-sum-item"><div class="att-sum-num sin-marcar" id="sum-sin">0</div><div class="att-sum-label">Sin marcar</div></div>
       </div>
 
+      <div class="asistencia-info-box" id="asistenciaInfoBox" style="display:none;"></div>
+
       <div id="asistenciaLista" class="asistencia-lista">
         <div class="empty-state">
           <span class="es-icon">📋</span>
           <h3>Selecciona un grupo</h3>
-          <p>Elige un grupo para ver la lista de atletas.</p>
+          <p>Elige una disciplina y un grupo para ver la lista de atletas.</p>
         </div>
       </div>
     </section>
@@ -283,6 +383,7 @@
     <section id="panel-mis-atletas" class="panel">
       <div class="section-header">
         <h2>👨‍👧 Mis Atletas</h2>
+        <button id="inscribirAtletaBtn" class="btn-primary">➕ Inscribir Atleta</button>
       </div>
       <div class="table-container">
         <table>
@@ -302,6 +403,24 @@
       <div class="section-header">
         <h2>🏋️ Mis Grupos</h2>
         <button id="guardarAsistenciaEntrenadorBtn" class="btn-primary">💾 Guardar Asistencia</button>
+      </div>
+
+      <!-- Info del grupo actual -->
+      <div id="entrenadorGrupoInfo" class="grupo-info-card hidden">
+        <div class="grupo-info-row">
+          <div class="grupo-info-item">
+            <span class="grupo-info-label">Disciplina</span>
+            <span class="grupo-info-val" id="entrenadorGrupoDisciplina">—</span>
+          </div>
+          <div class="grupo-info-item">
+            <span class="grupo-info-label">Grupo</span>
+            <span class="grupo-info-val" id="entrenadorGrupoNombre">—</span>
+          </div>
+          <div class="grupo-info-item">
+            <span class="grupo-info-label">Atletas</span>
+            <span class="grupo-info-val" id="entrenadorGrupoCount">—</span>
+          </div>
+        </div>
       </div>
 
       <div style="margin-bottom:16px;">
@@ -377,6 +496,77 @@
     <div class="modal-buttons">
       <button class="btn-secondary close-modal">Cancelar</button>
       <button id="saveAtletaBtn" class="btn-primary">Guardar atleta</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Modal: Inscribir Atleta (tutor) -->
+<div id="inscribirModal" class="modal">
+  <div class="modal-content">
+    <h3>➕ Inscribir Atleta</h3>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:18px;">
+      El atleta quedará en estado <strong style="color:var(--warning)">Pendiente</strong> hasta que la administración lo apruebe.
+    </p>
+
+    <p class="form-divider">Datos del atleta</p>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Nombre</label>
+        <input type="text" id="inscNombre" placeholder="Nombre" class="input-field">
+      </div>
+      <div class="form-group">
+        <label>Apellido</label>
+        <input type="text" id="inscApellido" placeholder="Apellido" class="input-field">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Fecha de nacimiento</label>
+        <input type="date" id="inscFechaNac" class="input-field">
+      </div>
+      <div class="form-group">
+        <label>Disciplina</label>
+        <select id="inscDisciplina" class="input-field"></select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Grupo</label>
+      <select id="inscGrupo" class="input-field"></select>
+    </div>
+
+    <div class="modal-buttons">
+      <button class="btn-secondary close-modal">Cancelar</button>
+      <button id="saveInscribirBtn" class="btn-primary">Inscribir atleta</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Modal: Nuevo / Editar Grupo -->
+<div id="grupoModal" class="modal">
+  <div class="modal-content">
+    <h3 id="grupoModalTitle">➕ Nuevo Grupo</h3>
+    <input type="hidden" id="grupoId">
+
+    <div class="form-group">
+      <label>Nombre del grupo</label>
+      <input type="text" id="grupoNombre" placeholder="Ej: Fútbol Primaria" class="input-field">
+    </div>
+    <div class="form-group">
+      <label>Disciplina</label>
+      <select id="grupoDisciplina" class="input-field"></select>
+    </div>
+    <div class="form-group">
+      <label>Entrenador asignado (opcional)</label>
+      <select id="grupoEntrenador" class="input-field">
+        <option value="">Sin asignar</option>
+      </select>
+    </div>
+
+    <div class="modal-buttons">
+      <button class="btn-secondary close-modal">Cancelar</button>
+      <button id="saveGrupoBtn" class="btn-primary">Guardar grupo</button>
     </div>
   </div>
 </div>
