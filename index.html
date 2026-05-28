@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Club Halcones | Gestión Deportiva</title>
+  <link rel="icon" href="img/image-removebg-preview.ico" type="image/png">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <!-- jsPDF y AutoTable (para PDF) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <!-- SheetJS (para Excel) -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- NOTIFICACIONES TOAST -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- LOGIN MODAL (único punto de entrada) -->
+  <div id="loginModal" class="modal">
+    <div class="modal-content login-card">
+      <div class="login-header">
+        <div class="logo-icon"><img src="img/image-removebg-preview.ico" alt=""></div>
+        <h2>CLUB HALCONES</h2>
+        <p>Sistema de Gestión · Temporada 2026</p>
+      </div>
+      <div class="role-selector">
+        <button class="role-btn active" data-role="administracion">👩‍💼 COORDINADORA</button>
+        <button class="role-btn" data-role="entrenador">🏋️ ENTRENADOR</button>
+        <button class="role-btn" data-role="tutor">👨‍👧 PADRE/TUTOR</button>
+      </div>
+      <input type="email" id="loginEmail" class="input-field" placeholder="correo@ejemplo.com">
+      <input type="password" id="loginPassword" class="input-field" placeholder="Contraseña">
+      <button id="loginBtn" class="btn-primary full-width">INGRESAR</button>
+      <p class="login-footer">¿Olvidaste tu contraseña? <a href="#">Recuperar acceso</a></p>
+    </div>
+  </div>
+
+  <!-- APLICACIÓN PRINCIPAL (oculta hasta login exitoso) -->
+  <div id="app" class="app-container hidden">
+
+    <!-- BARRA DE NAVEGACIÓN SUPERIOR -->
+    <nav class="navbar">
+      <div class="logo-area">
+        <span class="logo-icon">🦅</span>
+        <span class="logo-text">HALCONES</span>
+      </div>
+      <div class="nav-tabs" id="navTabs">
+        <!-- Las pestañas se generarán dinámicamente según rol -->
+      </div>
+      <div class="user-menu">
+        <span id="userNameDisplay" class="user-name"></span>
+        <button id="logoutBtn" class="btn-outline-small">Cerrar sesión</button>
+      </div>
+    </nav>
+
+    <!-- CONTENEDOR DE PANELES (cada sección se muestra/oculta) -->
+    <main id="mainContent" class="main-content">
+      <!-- Panel INICIO (dashboard público, con estadísticas generales) -->
+      <section id="panel-inicio" class="panel active">
+        <div class="hero">
+          <h1>Club Deportivo y Cultural <span>Halcones</span></h1>
+          <p>Gestión integral de atletas, pagos, asistencia y comunicados</p>
+        </div>
+        <div class="stats-row" id="statsRow">
+          <div class="stat-card"><h3 id="totalAtletas">0</h3><span>Atletas activos</span></div>
+          <div class="stat-card"><h3 id="totalDisciplinas">0</h3><span>Disciplinas</span></div>
+          <div class="stat-card"><h3 id="pagosPendientes">0</h3><span>Pagos pendientes</span></div>
+          <div class="stat-card"><h3 id="comunicadosRecientes">0</h3><span>Comunicados</span></div>
+        </div>
+        <div class="section-title"><h2>Últimos comunicados</h2></div>
+        <div id="ultimosComunicados" class="noticias-grid"></div>
+      </section>
+
+      <!-- Panel DASHBOARD ADMIN (solo visible para administración) -->
+      <section id="panel-dashboard" class="panel">
+        <div class="section-header">
+          <h2>📊 Dashboard Administrativo</h2>
+          <div class="export-buttons">
+            <button id="exportPDFBtn" class="btn-secondary">📄 Exportar PDF</button>
+            <button id="exportExcelBtn" class="btn-secondary">📊 Exportar Excel</button>
+          </div>
+        </div>
+        <div class="kpi-row" id="kpiContainer"></div>
+        <div class="charts-row">
+          <div class="chart-card"><canvas id="disciplinasChart"></canvas></div>
+          <div class="chart-card"><canvas id="pagosEstadoChart"></canvas></div>
+        </div>
+      </section>
+
+      <!-- Panel GESTIÓN ATLETAS (solo administración) -->
+      <section id="panel-atletas" class="panel">
+        <div class="section-header">
+          <h2>👥 Gestión de Atletas</h2>
+          <button id="newAtletaBtn" class="btn-primary">➕ Nuevo Atleta</button>
+        </div>
+        <div class="filters-bar">
+          <input type="text" id="searchAtleta" placeholder="Buscar por nombre..." class="input-field">
+          <select id="filterDisciplina" class="input-field"><option value="">Todas las disciplinas</option></select>
+          <select id="filterEstado" class="input-field"><option value="">Todos los estados</option><option value="activo">Activo</option><option value="inactivo">Inactivo</option><option value="pendiente">Pendiente</option></select>
+        </div>
+        <div class="table-container">
+          <table id="atletasTable">
+            <thead><tr><th>Atleta</th><th>Disciplina</th><th>Tutor</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <tbody id="atletasTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Panel PAGOS -->
+      <section id="panel-pagos" class="panel">
+        <div class="section-header">
+          <h2>💰 Gestión de Pagos</h2>
+          <button id="pagoEfectivoBtn" class="btn-primary">💵 Registrar pago en efectivo</button>
+        </div>
+        <div class="pagos-tabs">
+          <button class="tab-btn active" data-tab="pendientes">Pendientes</button>
+          <button class="tab-btn" data-tab="historial">Historial</button>
+          <button class="tab-btn" data-tab="subir">Subir comprobante</button>
+        </div>
+        <div id="pagosContent" class="pagos-content"></div>
+      </section>
+
+      <!-- Panel ASISTENCIA -->
+      <section id="panel-asistencia" class="panel">
+        <div class="section-header">
+          <h2>📋 Control de Asistencia</h2>
+        </div>
+        <div class="asistencia-filters">
+          <select id="asistenciaGrupo" class="input-field"></select>
+          <input type="date" id="asistenciaFecha" class="input-field">
+          <button id="guardarAsistenciaBtn" class="btn-primary">Guardar asistencia</button>
+        </div>
+        <div id="asistenciaLista" class="asistencia-lista"></div>
+      </section>
+
+      <!-- Panel COMUNICADOS -->
+      <section id="panel-comunicados" class="panel">
+        <div class="section-header">
+          <h2>📢 Comunicados del Club</h2>
+          <button id="nuevoComunicadoBtn" class="btn-primary">+ Nuevo aviso</button>
+        </div>
+        <div class="filter-chips">
+          <button class="chip active" data-filter="todos">Todos</button>
+          <button class="chip" data-filter="urgente">Urgentes</button>
+        </div>
+        <div id="comunicadosLista" class="comunicados-grid"></div>
+      </section>
+
+      <!-- Panel MIS ATLETAS (tutor) -->
+      <section id="panel-mis-atletas" class="panel">
+        <div class="section-header"><h2>👨‍👧 Mis Atletas</h2></div>
+        <div class="table-container">
+          <table><thead><tr><th>Atleta</th><th>Disciplina</th><th>Estado</th><th>Acciones</th></tr></thead><tbody id="misAtletasBody"></tbody></table>
+        </div>
+      </section>
+
+      <!-- Panel MIS GRUPOS (entrenador) -->
+      <section id="panel-mis-grupos" class="panel">
+        <div class="section-header"><h2>🏋️ Mis Grupos</h2></div>
+        <select id="entrenadorGrupo" class="input-field"></select>
+        <div id="entrenadorAsistenciaLista" class="asistencia-lista"></div>
+        <button id="guardarAsistenciaEntrenadorBtn" class="btn-primary">Guardar asistencia</button>
+      </section>
+    </main>
+  </div>
+
+  <!-- MODAL para formulario de atleta (crear/editar) -->
+  <div id="atletaModal" class="modal">
+    <div class="modal-content">
+      <h3 id="atletaModalTitle">Nuevo Atleta</h3>
+      <input type="hidden" id="atletaId">
+      <input type="text" id="atletaNombre" placeholder="Nombre" class="input-field">
+      <input type="text" id="atletaApellido" placeholder="Apellido" class="input-field">
+      <input type="date" id="atletaFechaNac" class="input-field">
+      <select id="atletaDisciplina" class="input-field"></select>
+      <select id="atletaGrupo" class="input-field"></select>
+      <input type="text" id="atletaTutorNombre" placeholder="Nombre del tutor" class="input-field">
+      <input type="tel" id="atletaTutorTelefono" placeholder="Teléfono" class="input-field">
+      <input type="email" id="atletaTutorEmail" placeholder="Email del tutor" class="input-field">
+      <div class="modal-buttons">
+        <button id="saveAtletaBtn" class="btn-primary">Guardar</button>
+        <button class="btn-secondary close-modal">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL para subir comprobante -->
+  <div id="comprobanteModal" class="modal">
+    <div class="modal-content">
+      <h3>Subir comprobante de transferencia</h3>
+      <select id="compAtleta" class="input-field"></select>
+      <select id="compTipo" class="input-field"><option value="mensualidad">Mensualidad</option><option value="reinscripcion">Reinscripción</option></select>
+      <input type="number" id="compMonto" placeholder="Monto en RD$" class="input-field">
+      <input type="file" id="compArchivo" accept="image/*,application/pdf" class="input-field">
+      <div class="modal-buttons">
+        <button id="subirComprobanteBtn" class="btn-primary">Enviar</button>
+        <button class="btn-secondary close-modal">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL para pago en efectivo -->
+  <div id="efectivoModal" class="modal">
+    <div class="modal-content">
+      <h3>Registrar pago en efectivo</h3>
+      <select id="efectivoAtleta" class="input-field"></select>
+      <select id="efectivoTipo" class="input-field"><option value="mensualidad">Mensualidad</option><option value="reinscripcion">Reinscripción</option></select>
+      <input type="number" id="efectivoMonto" placeholder="Monto" class="input-field">
+      <div class="modal-buttons">
+        <button id="guardarEfectivoBtn" class="btn-primary">Registrar pago</button>
+        <button class="btn-secondary close-modal">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
