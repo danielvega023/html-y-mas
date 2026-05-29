@@ -4,7 +4,7 @@
    Endpoints base: http://localhost:3000
 ═══════════════════════════════════════════════════════ */
 
-const API_BASE = 'http://localhost:3000';
+const API_BASE = 'https://halcones-backend.onrender.com';
 
 let currentUser = null;       // { id, nombre, rol }
 let charts = {};              // instancias Chart.js
